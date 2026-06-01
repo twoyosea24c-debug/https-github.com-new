@@ -56,18 +56,18 @@ function warnCartHtml(){return state.cart.length?`<div class="notice"><b>未完�
 
 function render(){
   const v=$('#view'); footer(null);
-  const pages={home, register, registered, items, registerSale, lineReader, recognitionLogs, keypad, confirmItem, manualPrice, cart, receiptPreview, payment, saleDone, sales, settings};
+  const pages={home, register, registered, items, editItem, registerSale, lineReader, recognitionLogs, keypad, confirmItem, manualPrice, cart, receiptPreview, payment, saleDone, sales, settings};
   (pages[route.name]||home)(v, route.params||{});
 }
 
-function home(v){setTitle('線数字レジ Phase2-5'); const selling=sellingItems().length; const sold=state.items.filter(i=>i.status==='sold').length; v.innerHTML=`<div class="grid">
+function home(v){setTitle('線数字レジ Phase2-6'); const selling=sellingItems().length; const sold=state.items.filter(i=>i.status==='sold').length; v.innerHTML=`<div class="grid">
   ${noticeHtml()}${warnCartHtml()}
   <div class="card"><div class="muted">現在のカート</div><div class="big-total">${yen(cartTotal())}</div><div class="muted">${state.cart.length}件の商品 / 販売中 ${selling}点 / 販売済み ${sold}点</div></div>
   <button class="btn" onclick="go('registerSale')">レジを開く</button>
   <div class="two"><button class="btn secondary" onclick="go('register')">商品登録</button><button class="btn secondary" onclick="go('items')">商品一覧</button></div>
   <div class="two"><button class="btn secondary" onclick="go('sales')">売上履歴</button><button class="btn secondary" onclick="go('settings')">設定</button></div>
   <button class="btn secondary" onclick="go('recognitionLogs')">読み取りログを見る</button>
-  <div class="notice">Phase2-5：読み取り検証ログを追加しました。誤読した番号・修正後番号・確信度を保存して改善に使えます。</div>
+  <div class="notice">Phase2-6：実運用向けに商品編集・売上取消・バックアップ復元を追加しました。</div>
 </div>`}
 
 function register(v){setTitle('商品登録'); const buttons=state.settings.quick_price_buttons||[]; v.innerHTML=`<form id="regForm" class="grid card">
@@ -94,7 +94,32 @@ function items(v){setTitle('商品一覧'); const q=route.params?.q||''; const s
   <div class="card grid"><input id="q" placeholder="商品番号・商品名で検索" value="${q}"><select id="st"><option value="all">すべて</option><option value="selling">販売中</option><option value="sold">販売済み</option><option value="hidden">非表示</option></select></div>
   <div class="list">${list.map(itemCard).join('') || '<div class="card muted">商品がありません</div>'}</div>
 </div>`; $('#st').value=st; $('#q').oninput=e=>replace('items',{q:e.target.value, st:$('#st').value}); $('#st').onchange=e=>replace('items',{q:$('#q').value, st:e.target.value});}
-function itemCard(i){return `<div class="card item ${i.status}"><div class="row"><img class="thumb" src="${i.image_uri||''}"><div style="flex:1"><div class="row between"><b>${i.item_code} ${itemName(i)}</b><span class="badge ${i.status}">${statusLabel(i.status)}</span></div><div class="price">${yen(i.price)}</div><div class="muted">登録 ${formatDt(i.created_at)} / 販売 ${formatDt(i.sold_at)}</div>${lineCode(i.item_code,'small')}</div></div></div>`}
+function itemCard(i){return `<div class="card item ${i.status}"><div class="row"><img class="thumb" src="${i.image_uri||''}"><div style="flex:1"><div class="row between"><b>${i.item_code} ${itemName(i)}</b><span class="badge ${i.status}">${statusLabel(i.status)}</span></div><div class="price">${yen(i.price)}</div><div class="muted">登録 ${formatDt(i.created_at)} / 販売 ${formatDt(i.sold_at)}</div>${lineCode(i.item_code,'small')}<div class="two"><button class="btn secondary small" onclick="nav('editItem',{id:'${i.id}'})">編集</button>${i.status==='selling'?`<button class="btn secondary small" onclick="nav('confirmItem',{id:'${i.id}'})">レジに追加</button>`:''}</div></div></div></div>`}
+
+function editItem(v,{id}){
+  const item=state.items.find(i=>i.id===id && !i.deleted_at);
+  setTitle('商品編集');
+  if(!item){v.innerHTML='<div class="error">商品が見つかりません</div>'; return;}
+  v.innerHTML=`<form id="editForm" class="grid card">
+    <img class="hero-img" src="${item.image_uri||''}">
+    <div class="code">${item.item_code}</div>
+    <label>商品写真を変更</label><input id="photo2" type="file" accept="image/*" capture="environment"><img id="preview2" class="hero-img hidden" alt="preview">
+    <label>価格</label><input id="price2" type="number" min="1" inputmode="numeric" value="${item.price}" required>
+    <label>商品名</label><input id="name2" value="${item.name||''}">
+    <label>カテゴリ</label><input id="category2" value="${item.category||''}">
+    <label>メモ</label><textarea id="memo2">${item.memo||''}</textarea>
+    <label>状態</label><select id="status2"><option value="selling">販売中</option><option value="sold">販売済み</option><option value="hidden">非表示</option></select>
+    <button class="btn" type="submit">保存</button>
+    <button class="btn secondary" type="button" onclick="go('items')">商品一覧へ戻る</button>
+    <button class="btn danger" type="button" id="hideItem">非表示にする</button>
+  </form>`;
+  $('#status2').value=item.status;
+  let image=item.image_uri;
+  $('#photo2').onchange=e=>{const f=e.target.files[0]; if(!f) return; const r=new FileReader(); r.onload=()=>{image=r.result; $('#preview2').src=image; $('#preview2').classList.remove('hidden')}; r.readAsDataURL(f)};
+  $('#editForm').onsubmit=e=>{e.preventDefault(); const oldStatus=item.status; item.price=Number($('#price2').value); if(item.price<=0) return alert('価格を入力してください'); item.name=$('#name2').value.trim()||`商品 ${item.item_code}`; item.category=$('#category2').value.trim(); item.memo=$('#memo2').value.trim(); item.status=$('#status2').value; item.image_uri=image; item.updated_at=nowIso(); if(item.status==='sold' && oldStatus!=='sold') item.sold_at=nowIso(); if(item.status!=='sold') item.sold_at=null; item.sync_status='pending_update'; save(); lastNotice=`${item.item_code} を保存しました。`; go('items');};
+  $('#hideItem').onclick=()=>{ if(confirm('この商品を非表示にしますか？販売履歴は残ります。')){ item.status='hidden'; item.updated_at=nowIso(); item.sync_status='pending_update'; save(); go('items'); } };
+}
+
 
 function registerSale(v){setTitle('レジ'); const recent=sellingItems().slice(-3).reverse(); v.innerHTML=`<div class="grid">
   ${noticeHtml()}${warnCartHtml()}
@@ -355,10 +380,31 @@ function openPayment(m){ if(m==='cash'||m==='other') return alert('現金・そ�
 function completeSale(){ if(!state.cart.length) return alert('カートが空です'); for(const c of state.cart.filter(c=>c.line_type==='item')){const item=state.items.find(i=>i.id===c.item_id); if(!item || item.status!=='selling') return alert(`${c.item_code} は販売できない状態です。カートを確認してください。`)} const date=todayKey(); const count=state.sales.filter(s=>s.sale_no?.startsWith(date)).length+1; const soldAt=nowIso(); const sale={id:uid(), sale_no:`${date}-${String(count).padStart(4,'0')}`, sold_at:soldAt, total_amount:cartTotal(), payment_method:selectedPayment, status:'completed', receipt_image_uri:null, created_at:soldAt, updated_at:soldAt, sync_status:'pending_create', last_synced_at:null, items: state.cart.map(c=>({id:uid(), sale_id:null, item_id:c.item_id, item_code:c.item_code, item_name:c.item_name, price_at_sale:c.price, quantity:c.quantity, subtotal:c.subtotal, line_type:c.line_type, created_at:soldAt}))}; sale.items.forEach(x=>x.sale_id=sale.id); for(const c of state.cart.filter(c=>c.line_type==='item')){const item=state.items.find(i=>i.id===c.item_id); item.status='sold'; item.sold_at=sale.sold_at; item.updated_at=nowIso(); item.sync_status='pending_update'} state.sales.push(sale); state.cart=[]; save(); stack=[]; replace('saleDone',{id:sale.id}); }
 function saleDone(v,{id}){const s=state.sales.find(x=>x.id===id); setTitle('会計完了'); if(!s){v.innerHTML='売上が見つかりません'; return} v.innerHTML=`<div class="grid"><div class="success">会計完了しました。カートは空になりました。</div><div class="card"><div class="muted">取引番号</div><div class="code">${s.sale_no}</div><div class="muted">${formatDt(s.sold_at)} / ${paymentLabel(s.payment_method)}</div><div class="big-total">${yen(s.total_amount)}</div><table><tbody>${s.items.map(i=>`<tr><td>${i.item_code}<br>${i.item_name}</td><td class="right">${yen(i.subtotal)}</td></tr>`).join('')}</tbody></table><div class="muted">${state.settings.receipt_message||''}</div></div><button class="btn" onclick="go('registerSale')">次の会計へ</button><button class="btn secondary" onclick="shareReceipt('${s.id}')">明細画像を共有</button><button class="btn secondary" onclick="go('sales')">売上履歴を見る</button></div>`}
 
-function sales(v){setTitle('売上履歴'); const today=new Date().toDateString(); const completed=state.sales.filter(s=>s.status==='completed'); const todays=completed.filter(s=>new Date(s.sold_at).toDateString()===today); const total=todays.reduce((a,s)=>a+s.total_amount,0); const soldCount=state.items.filter(i=>i.status==='sold').length; const byPay=completed.reduce((m,s)=>{m[s.payment_method]=(m[s.payment_method]||0)+s.total_amount; return m},{}); v.innerHTML=`<div class="grid"><div class="card"><div class="muted">今日の売上</div><div class="big-total">${yen(total)}</div><div class="muted">今日の取引 ${todays.length}件 / 販売済み ${soldCount}点</div><div class="muted">支払い別 ${Object.entries(byPay).map(([k,n])=>`${paymentLabel(k)}:${yen(n)}`).join(' / ')||'-'}</div></div><div class="list">${completed.slice().reverse().map(s=>`<div class="card"><div class="row between"><b>${s.sale_no}</b><span>${yen(s.total_amount)}</span></div><div class="muted">${formatDt(s.sold_at)} / ${paymentLabel(s.payment_method)} / ${s.items.length}件</div><details><summary>明細を見る</summary><table><tbody>${s.items.map(i=>`<tr><td>${i.item_code}<br>${i.item_name}</td><td class="right">${yen(i.subtotal)}</td></tr>`).join('')}</tbody></table><button class="btn secondary small" onclick="shareReceipt('${s.id}')">明細画像を共有</button></details></div>`).join('') || '<div class="card muted">売上履歴はありません</div>'}</div></div>`}
+function sales(v){setTitle('売上履歴'); const today=new Date().toDateString(); const completed=state.sales.filter(s=>s.status==='completed'); const canceled=state.sales.filter(s=>s.status==='canceled'); const todays=completed.filter(s=>new Date(s.sold_at).toDateString()===today); const total=todays.reduce((a,s)=>a+s.total_amount,0); const soldCount=state.items.filter(i=>i.status==='sold').length; const byPay=completed.reduce((m,s)=>{m[s.payment_method]=(m[s.payment_method]||0)+s.total_amount; return m},{}); v.innerHTML=`<div class="grid"><div class="card"><div class="muted">今日の売上</div><div class="big-total">${yen(total)}</div><div class="muted">今日の取引 ${todays.length}件 / 販売済み ${soldCount}点 / 取消 ${canceled.length}件</div><div class="muted">支払い別 ${Object.entries(byPay).map(([k,n])=>`${paymentLabel(k)}:${yen(n)}`).join(' / ')||'-'}</div></div><div class="list">${state.sales.slice().reverse().map(s=>`<div class="card ${s.status==='canceled'?'item sold':''}"><div class="row between"><b>${s.sale_no}</b><span class="badge ${s.status==='completed'?'selling':'sold'}">${s.status==='completed'?'完了':'取消'}</span></div><div class="row between"><span>${yen(s.total_amount)}</span><span class="muted">${formatDt(s.sold_at)} / ${paymentLabel(s.payment_method)} / ${s.items.length}件</span></div><details><summary>明細を見る</summary><table><tbody>${s.items.map(i=>`<tr><td>${i.item_code}<br>${i.item_name}</td><td class="right">${yen(i.subtotal)}</td></tr>`).join('')}</tbody></table><div class="two"><button class="btn secondary small" onclick="shareReceipt('${s.id}')">明細画像を共有</button>${s.status==='completed'?`<button class="btn danger small" onclick="cancelSale('${s.id}')">取引取消</button>`:''}</div></details></div>`).join('') || '<div class="card muted">売上履歴はありません</div>'}</div></div>`}
 
-function settings(v){setTitle('設定'); v.innerHTML=`<form id="settingsForm" class="grid card"><label>店舗名</label><input id="shop" value="${state.settings.shop_name||''}"><label>よく使う価格ボタン（カンマ区切り）</label><input id="quick" value="${(state.settings.quick_price_buttons||[]).join(',')}"><label>商品番号の再利用</label><select id="reuse"><option value="false">再利用しない</option><option value="true">再利用する</option></select><label>通常数字読み取り</label><select id="normal"><option value="true">有効</option><option value="false">無効</option></select><label>レシート下部メッセージ</label><input id="msg" value="${state.settings.receipt_message||''}"><button class="btn" type="submit">保存</button><button class="btn secondary" type="button" onclick="go('recognitionLogs')">読み取りログを見る</button><button class="btn secondary" type="button" id="export">データを書き出し</button><button class="btn danger" type="button" id="reset">全データ初期化</button></form>`; $('#reuse').value=String(!!state.settings.code_reuse_enabled); $('#normal').value=String(!!state.settings.normal_digit_reading_enabled); $('#settingsForm').onsubmit=e=>{e.preventDefault(); state.settings.shop_name=$('#shop').value; state.settings.quick_price_buttons=$('#quick').value.split(',').map(x=>Number(x.trim())).filter(Boolean); state.settings.code_reuse_enabled=$('#reuse').value==='true'; state.settings.normal_digit_reading_enabled=$('#normal').value==='true'; state.settings.receipt_message=$('#msg').value; save(); alert('保存しました')}; $('#export').onclick=exportData; $('#reset').onclick=()=>{if(confirm('全データを削除します。よろしいですか？')){state=defaultState(); save(); go('home')}};}
+function cancelSale(id){
+  const sale=state.sales.find(s=>s.id===id);
+  if(!sale || sale.status!=='completed') return alert('取消できる取引が見つかりません');
+  if(!confirm(`${sale.sale_no} を取り消しますか？
+登録商品は販売中に戻します。`)) return;
+  sale.status='canceled'; sale.updated_at=nowIso(); sale.sync_status='pending_update';
+  for(const line of sale.items.filter(x=>x.line_type==='item')){
+    const item=state.items.find(i=>i.id===line.item_id);
+    if(item && item.status==='sold') { item.status='selling'; item.sold_at=null; item.updated_at=nowIso(); item.sync_status='pending_update'; }
+  }
+  save(); lastNotice='取引を取り消し、対象商品を販売中に戻しました。'; go('sales');
+}
+
+function settings(v){setTitle('設定'); v.innerHTML=`<form id="settingsForm" class="grid card"><label>店舗名</label><input id="shop" value="${state.settings.shop_name||''}"><label>よく使う価格ボタン（カンマ区切り）</label><input id="quick" value="${(state.settings.quick_price_buttons||[]).join(',')}"><label>商品番号の再利用</label><select id="reuse"><option value="false">再利用しない</option><option value="true">再利用する</option></select><label>通常数字読み取り</label><select id="normal"><option value="true">有効</option><option value="false">無効</option></select><label>レシート下部メッセージ</label><input id="msg" value="${state.settings.receipt_message||''}"><button class="btn" type="submit">保存</button><button class="btn secondary" type="button" onclick="go('recognitionLogs')">読み取りログを見る</button><button class="btn secondary" type="button" id="export">データを書き出し</button><label>バックアップ復元</label><input id="importFile" type="file" accept="application/json"><button class="btn secondary" type="button" id="importBtn">選択したJSONから復元</button><button class="btn danger" type="button" id="reset">全データ初期化</button></form>`; $('#reuse').value=String(!!state.settings.code_reuse_enabled); $('#normal').value=String(!!state.settings.normal_digit_reading_enabled); $('#settingsForm').onsubmit=e=>{e.preventDefault(); state.settings.shop_name=$('#shop').value; state.settings.quick_price_buttons=$('#quick').value.split(',').map(x=>Number(x.trim())).filter(Boolean); state.settings.code_reuse_enabled=$('#reuse').value==='true'; state.settings.normal_digit_reading_enabled=$('#normal').value==='true'; state.settings.receipt_message=$('#msg').value; save(); alert('保存しました')}; $('#export').onclick=exportData; $('#importBtn').onclick=importData; $('#reset').onclick=()=>{if(confirm('全データを削除します。よろしいですか？')){state=defaultState(); save(); go('home')}};}
 function exportData(){const blob=new Blob([JSON.stringify(state,null,2)],{type:'application/json'}); const a=document.createElement('a'); a.href=URL.createObjectURL(blob); a.download=`sen-digit-register-backup-${todayKey()}.json`; a.click(); setTimeout(()=>URL.revokeObjectURL(a.href),1000)}
+function importData(){
+  const file=$('#importFile')?.files?.[0];
+  if(!file) return alert('復元するJSONファイルを選んでください');
+  const r=new FileReader();
+  r.onload=()=>{try{ const data=JSON.parse(r.result); if(!data || !Array.isArray(data.items) || !Array.isArray(data.sales)) throw new Error('形式が違います'); if(!confirm('現在の端末内データをバックアップ内容で置き換えます。よろしいですか？')) return; state={...defaultState(), ...data, settings:{...defaultState().settings, ...(data.settings||{})}}; save(); lastNotice='バックアップから復元しました。'; go('home'); }catch(e){ alert('復元できませんでした。JSONファイルを確認してください。'); }};
+  r.readAsText(file);
+}
+
 
 
 function drawWrappedText(ctx, text, x, y, maxWidth, lineHeight){
@@ -428,4 +474,4 @@ async function shareReceipt(id){
 }
 
 window.addEventListener('beforeunload', e=>{ if(state.cart.length){ e.preventDefault(); e.returnValue='未完了のカートがあります'; }});
-window.exportRecognitionLogs=exportRecognitionLogs; window.clearRecognitionLogs=clearRecognitionLogs; window.stopCamera=stopCamera; window.nav=nav; window.replace=replace; window.go=go; window.removeCart=removeCart; window.clearCart=clearCart; window.changeQty=changeQty; window.shareReceipt=shareReceipt; render();
+window.exportRecognitionLogs=exportRecognitionLogs; window.clearRecognitionLogs=clearRecognitionLogs; window.cancelSale=cancelSale; window.importData=importData; window.stopCamera=stopCamera; window.nav=nav; window.replace=replace; window.go=go; window.removeCart=removeCart; window.clearCart=clearCart; window.changeQty=changeQty; window.shareReceipt=shareReceipt; render();
