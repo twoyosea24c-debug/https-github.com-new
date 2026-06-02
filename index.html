@@ -1,372 +1,45 @@
 <!doctype html>
 <html lang="ja">
-  <head>
-    <meta charset="utf-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
-    <meta name="theme-color" content="#f7f3ea" />
-    <meta name="apple-mobile-web-app-capable" content="yes" />
-    <meta name="apple-mobile-web-app-status-bar-style" content="default" />
-    <meta name="apple-mobile-web-app-title" content="線数字レジ" />
-    <title>LineCode Register MVP</title>
-    <link rel="apple-touch-icon" href="./icon-192.png" />
-    <link rel="manifest" href="./manifest.json" />
-    <link rel="manifest" href="./manifest.webmanifest" />
-    <link rel="stylesheet" href="./styles.css" />
-  </head>
-  <body>
-    <div id="app" class="app-shell">
-      <header class="topbar">
-        <div>
-          <p class="eyebrow">屋外販売レジ</p>
-          <h1>LineCode Register</h1>
-        </div>
-        <div class="top-actions">
-          <label class="switch"><input id="adminModeInput" type="checkbox" />管理</label>
-          <button id="resetDemoButton" class="icon-button" type="button" title="表示データを初期化">初期化</button>
-        </div>
-      </header>
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <title>線数字レジ Phase2-7</title>
+  <link rel="manifest" href="manifest.json">
+  <meta name="theme-color" content="#111827" />
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="線数字レジ">
+  <link rel="apple-touch-icon" href="icon-192.png">
+  <style>
+    :root{
+      --bg:#f7f7f8; --card:#fff; --text:#111827; --muted:#6b7280; --border:#d1d5db;
+      --primary:#111827; --danger:#b91c1c; --ok:#047857; --warn:#b45309; --soft:#eef2ff;
+    }
+    *{box-sizing:border-box} body{margin:0;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;background:var(--bg);color:var(--text)}
+    .app{max-width:480px;margin:0 auto;min-height:100dvh;background:var(--bg);padding-bottom:92px}
+    header{position:sticky;top:0;z-index:10;background:#fff;border-bottom:1px solid var(--border);padding:14px 16px;display:flex;align-items:center;gap:10px}
+    header h1{font-size:18px;margin:0;line-height:1.2}.back{border:1px solid var(--border);background:#fff;border-radius:12px;padding:8px 10px;font-weight:700}.hidden{display:none!important}
+    main{padding:16px}.grid{display:grid;gap:12px}.row{display:flex;gap:10px;align-items:center}.between{justify-content:space-between}.wrap{flex-wrap:wrap}
+    .card{background:var(--card);border:1px solid var(--border);border-radius:18px;padding:14px;box-shadow:0 1px 3px rgba(0,0,0,.04)}
+    .btn{width:100%;border:0;border-radius:16px;padding:15px 14px;font-size:17px;font-weight:800;background:var(--primary);color:#fff;min-height:54px}
+    .btn.secondary{background:#fff;color:var(--text);border:1px solid var(--border)}.btn.danger{background:var(--danger)}.btn.ok{background:var(--ok)}.btn.warn{background:var(--warn)}
+    .btn.small{width:auto;font-size:14px;min-height:40px;padding:9px 12px;border-radius:12px}.btn:disabled{opacity:.45}
+    label{display:block;font-weight:800;margin:10px 0 6px} input,textarea,select{width:100%;font-size:17px;padding:13px;border:1px solid var(--border);border-radius:14px;background:#fff} textarea{min-height:72px}
+    .muted{color:var(--muted);font-size:13px}.big-total{font-size:42px;font-weight:900;letter-spacing:-1px}.price{font-size:22px;font-weight:900}.code{font-size:28px;font-weight:900;letter-spacing:1px}.badge{display:inline-block;border-radius:999px;padding:4px 9px;font-size:12px;font-weight:900;background:#e5e7eb}.badge.selling{background:#dcfce7;color:#166534}.badge.sold{background:#fee2e2;color:#991b1b}.badge.hidden{background:#e5e7eb;color:#374151}
+    .thumb{width:72px;height:72px;object-fit:cover;border-radius:14px;background:#e5e7eb;border:1px solid var(--border)}.hero-img{width:100%;max-height:280px;object-fit:contain;border-radius:18px;background:#fff;border:1px solid var(--border)}
+    .line-code{display:flex;gap:8px;justify-content:center;margin:10px 0}.line-code svg{width:78px;height:78px;background:#fff;border-radius:10px}.line-code.small svg{width:44px;height:44px}.list{display:grid;gap:10px}.item.sold{opacity:.55}.kbd{display:grid;grid-template-columns:repeat(3,1fr);gap:10px}.kbd button{font-size:24px;min-height:64px}.display-code{text-align:center;font-size:44px;font-weight:900;padding:14px;border:1px solid var(--border);border-radius:16px;background:#fff;letter-spacing:6px}.footer{position:fixed;bottom:0;left:50%;transform:translateX(-50%);width:min(480px,100%);background:#fff;border-top:1px solid var(--border);padding:10px 14px calc(10px + env(safe-area-inset-bottom));z-index:20}.two{display:grid;grid-template-columns:1fr 1fr;gap:10px}.three{display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px}.notice{padding:12px;border-radius:14px;background:#fffbeb;border:1px solid #fde68a;color:#78350f}.error{padding:12px;border-radius:14px;background:#fef2f2;border:1px solid #fecaca;color:#7f1d1d}.success{padding:12px;border-radius:14px;background:#ecfdf5;border:1px solid #a7f3d0;color:#064e3b}table{width:100%;border-collapse:collapse}td,th{border-bottom:1px solid var(--border);padding:8px;text-align:left}.right{text-align:right}.seg{display:flex;gap:8px}.seg button{flex:1}.seg .active{background:var(--primary);color:white}.stepper{display:grid;grid-template-columns:auto 1fr auto;gap:8px;align-items:center}.stepper.mini{grid-template-columns:auto auto;justify-content:flex-start;margin:10px 0}.quick-item{text-align:left;white-space:normal}.item.sold img{filter:grayscale(1)}
 
-      <main>
-        <section id="view-home" class="view active" aria-labelledby="homeTitle">
-          <div class="home-hero">
-            <p class="eyebrow">屋外販売レジ</p>
-            <h2 id="homeTitle">今日の販売をすばやく処理</h2>
-            <button class="home-primary" type="button" data-go="sell">レジを開く</button>
-          </div>
-          <div class="home-grid">
-            <button type="button" data-go="register">商品登録</button>
-            <button type="button" data-go="inventory">商品一覧</button>
-            <button type="button" data-go="history">売上履歴</button>
-            <button type="button" data-go="settings">設定</button>
-          </div>
-        </section>
-
-        <section id="view-register" class="view" aria-labelledby="registerTitle">
-          <div class="section-head">
-            <h2 id="registerTitle">商品登録</h2>
-            <span id="nextCodeBadge" class="status-pill">次: 001</span>
-          </div>
-
-          <form id="productForm" class="panel form-stack">
-            <label class="switch setting-line">
-              <input id="reuseCodesInput" type="checkbox" />
-              削除済み・非表示の商品番号を再利用する
-            </label>
-
-            <label class="field photo-field">
-              <span>商品写真 <b>必須</b></span>
-              <input id="photoInput" type="file" accept="image/*" capture="environment" required />
-              <img id="photoPreview" alt="" class="photo-preview hidden" />
-            </label>
-
-            <label class="field">
-              <span>価格 <b>必須</b></span>
-              <input id="priceInput" type="number" min="0" step="1" inputmode="numeric" placeholder="例: 3500" required />
-            </label>
-            <div id="registerQuickPrices" class="quick-price-row" aria-label="よく使う価格"></div>
-
-            <label class="field">
-              <span>商品名</span>
-              <input id="nameInput" type="text" placeholder="例: 真鍮ピアス" maxlength="40" />
-            </label>
-
-            <label class="field">
-              <span>カテゴリ</span>
-              <input id="categoryInput" type="text" placeholder="例: アクセサリー" maxlength="30" />
-            </label>
-
-            <label class="field">
-              <span>メモ</span>
-              <textarea id="memoInput" rows="3" placeholder="素材、サイズ、注意点など"></textarea>
-            </label>
-
-            <button class="primary" type="submit">登録して番号を発行</button>
-          </form>
-
-          <article id="issuedPanel" class="issued panel hidden" aria-live="polite">
-            <p class="eyebrow">発行済み商品番号</p>
-            <img id="issuedPhoto" class="issued-photo hidden" alt="" />
-            <div id="issuedCode" class="issued-code">001</div>
-            <h3 id="issuedName"></h3>
-            <div id="issuedPrice" class="price"></div>
-            <div id="issuedLineDigits" class="line-digit-row large"></div>
-            <p class="hint">このコードを商品ラベルに書いてください。3桁すべてを左から写します。</p>
-            <div class="button-row stack-mobile">
-              <button id="nextRegisterButton" class="secondary" type="button">次の商品を登録</button>
-              <button class="secondary" type="button" data-go="inventory">商品一覧へ</button>
-              <button class="primary" type="button" data-go="sell">レジへ</button>
-            </div>
-          </article>
-        </section>
-
-        <section id="view-sell" class="view" aria-labelledby="sellTitle">
-          <div class="section-head">
-            <h2 id="sellTitle">レジ</h2>
-            <span id="cartBadge" class="status-pill">0点</span>
-          </div>
-          <div class="total-hero">
-            <span>合計</span>
-            <strong id="registerTotalHero">¥0</strong>
-          </div>
-
-          <div class="panel">
-            <div class="mode-grid" role="group" aria-label="入力方式">
-              <button class="mode mode-main active" type="button" data-mode="line">線数字を読む</button>
-              <button class="mode" type="button" data-mode="ocr">通常数字</button>
-              <button class="mode" type="button" data-mode="manual">3桁番号を入力</button>
-              <button class="mode" type="button" data-mode="price">価格だけ追加</button>
-              <button class="mode" type="button" data-go="sell">カートを見る</button>
-              <button class="mode" type="button" data-go="checkout">支払いへ進む</button>
-            </div>
-
-            <div id="lineMode" class="mode-panel active">
-              <div class="camera-box">
-                <video id="cameraVideo" autoplay playsinline muted></video>
-                <div class="camera-instruction">上をこちらに合わせてください ▲</div>
-                <div class="scan-overlay" aria-hidden="true">
-                  <div class="scan-cell"><span>百</span></div>
-                  <div class="scan-cell"><span>十</span></div>
-                  <div class="scan-cell"><span>一</span></div>
-                </div>
-              </div>
-              <div class="button-row">
-                <button id="startCameraButton" class="secondary" type="button">カメラ開始</button>
-                <button id="scanLineButton" class="primary" type="button">撮影</button>
-              </div>
-              <div class="button-row">
-                <button class="secondary" type="button" data-mode-shortcut="manual">手入力</button>
-                <button class="secondary" type="button" data-mode-shortcut="ocr">通常数字に切替</button>
-                <button class="secondary" type="button" data-action="cancel-confirm">キャンセル</button>
-              </div>
-              <p id="scanStatus" class="hint">左から百の位、十の位、一の位として読み取ります。</p>
-              <canvas id="scanCanvas" class="hidden"></canvas>
-            </div>
-
-            <div id="ocrMode" class="mode-panel">
-              <p class="warning-text">通常数字は価格などを拾う可能性があります。必ず確認してからカートに追加します。</p>
-              <div class="camera-box">
-                <video id="ocrCameraMirror" autoplay playsinline muted></video>
-                <div class="camera-instruction">商品番号だけを枠内に合わせてください</div>
-                <div class="scan-overlay" aria-hidden="true">
-                  <div class="scan-cell"><span>百</span></div>
-                  <div class="scan-cell"><span>十</span></div>
-                  <div class="scan-cell"><span>一</span></div>
-                </div>
-              </div>
-              <button id="scanOcrButton" class="secondary" type="button">通常数字を読む</button>
-              <label class="field">
-                <span>読み取った数字</span>
-                <input id="ocrInput" type="text" inputmode="numeric" maxlength="3" placeholder="例: 023" />
-              </label>
-              <button id="confirmOcrButton" class="primary" type="button">確認へ進む</button>
-            </div>
-
-            <div id="manualMode" class="mode-panel">
-              <label class="field">
-                <span>商品番号</span>
-                <input id="manualCodeInput" type="text" inputmode="numeric" maxlength="3" placeholder="例: 007" />
-              </label>
-              <div id="manualKeypad" class="keypad" aria-label="3桁番号キーパッド"></div>
-              <div class="button-row">
-                <button id="manualClearButton" class="secondary" type="button">クリア</button>
-                <button id="manualBackspaceButton" class="secondary" type="button">1文字削除</button>
-              </div>
-              <div class="button-row">
-                <button id="manualLookupButton" class="primary" type="button">検索</button>
-                <button class="secondary" type="button" data-action="cancel-confirm">キャンセル</button>
-              </div>
-            </div>
-
-            <div id="priceMode" class="mode-panel">
-              <label class="field">
-                <span>価格</span>
-                <input id="priceOnlyInput" type="number" min="0" step="1" inputmode="numeric" placeholder="例: 1200" />
-              </label>
-              <div id="priceQuickPrices" class="quick-price-row" aria-label="よく使う価格"></div>
-              <label class="field">
-                <span>数量</span>
-                <input id="priceOnlyQtyInput" type="number" min="1" step="1" inputmode="numeric" value="1" />
-              </label>
-              <label class="field">
-                <span>メモ</span>
-                <input id="priceOnlyNameInput" type="text" maxlength="30" placeholder="例: 値引き品" />
-              </label>
-              <button id="addPriceOnlyButton" class="primary" type="button">価格だけ追加</button>
-            </div>
-          </div>
-
-          <article id="confirmPanel" class="confirm panel hidden" aria-live="polite"></article>
-
-          <div class="panel">
-            <div class="section-head compact">
-              <h3>カート</h3>
-              <strong id="cartTotal">¥0</strong>
-            </div>
-            <ul id="cartList" class="cart-list"></ul>
-            <div class="button-row">
-              <button id="clearCartButton" class="secondary" type="button">カート削除</button>
-              <button id="continueScanButton" class="secondary" type="button">続けて読み取る</button>
-              <button id="showReceiptButton" class="primary" type="button">明細へ</button>
-            </div>
-          </div>
-        </section>
-
-        <section id="view-checkout" class="view" aria-labelledby="checkoutTitle">
-          <div class="section-head">
-            <h2 id="checkoutTitle">支払い前明細</h2>
-            <span id="checkoutStatus" class="status-pill">確認</span>
-          </div>
-
-          <article id="receiptPanel" class="receipt panel">
-            <p class="receipt-shop">HANDMADE MARKET</p>
-            <p id="receiptDate" class="receipt-date"></p>
-            <div class="receipt-payable">
-              <span>お支払い金額</span>
-              <strong id="receiptPayableTotal">¥0</strong>
-            </div>
-            <ul id="receiptItems" class="receipt-items"></ul>
-            <div class="receipt-total">
-              <span>合計</span>
-              <strong id="receiptTotal">¥0</strong>
-            </div>
-          </article>
-
-          <div class="button-row">
-            <button class="secondary" type="button" data-go="sell">カートに戻る</button>
-            <button id="goPaymentButton" class="primary" type="button">支払いへ進む</button>
-          </div>
-        </section>
-
-        <section id="view-payment" class="view" aria-labelledby="paymentTitle">
-          <div class="section-head">
-            <h2 id="paymentTitle">決済サービス窓口</h2>
-            <span id="paymentStatus" class="status-pill">支払い待ち</span>
-          </div>
-          <div class="total-hero">
-            <span>合計金額</span>
-            <strong id="paymentTotal">¥0</strong>
-          </div>
-          <p class="warning-text">外部決済が完了したら、この画面に戻って会計完了を押してください。</p>
-
-          <div class="panel form-stack">
-            <label class="field">
-              <span>支払い方法</span>
-              <select id="paymentMethod">
-                <option value="Square">Square</option>
-                <option value="PayPay">PayPay</option>
-                <option value="楽天ペイ">楽天ペイ</option>
-                <option value="現金">現金</option>
-                <option value="その他">その他</option>
-              </select>
-            </label>
-
-            <div class="payment-actions">
-              <button id="copyAmountButton" class="secondary" type="button">金額コピー</button>
-              <button id="openSquareButton" class="secondary" type="button">Squareを開く</button>
-              <button id="openPayPayButton" class="secondary" type="button">PayPayを開く</button>
-              <button id="openRakutenButton" class="secondary" type="button">楽天ペイを開く</button>
-              <button id="cashRecordButton" class="secondary" type="button">現金で記録</button>
-            </div>
-
-            <button id="completeSaleButton" class="primary danger" type="button">会計完了</button>
-            <button class="secondary" type="button" data-go="sell">カートに戻る</button>
-          </div>
-
-          <article id="completePanel" class="receipt panel hidden"></article>
-        </section>
-
-        <section id="view-inventory" class="view" aria-labelledby="inventoryTitle">
-          <div class="section-head">
-            <h2 id="inventoryTitle">商品一覧</h2>
-            <span id="inventoryCount" class="status-pill">0件</span>
-          </div>
-          <div class="panel form-stack">
-            <label class="field">
-              <span>商品番号検索・商品名検索</span>
-              <input id="inventorySearchInput" type="search" placeholder="番号・商品名・価格で検索" />
-            </label>
-            <label class="field">
-              <span>状態</span>
-              <select id="inventoryStatusFilter">
-                <option value="all">すべて</option>
-                <option value="selling">販売中</option>
-                <option value="sold">販売済み</option>
-                <option value="hidden">非表示</option>
-              </select>
-            </label>
-            <label class="field">
-              <span>カテゴリ</span>
-              <select id="inventoryCategoryFilter">
-                <option value="all">すべて</option>
-              </select>
-            </label>
-          </div>
-          <div id="inventoryList" class="inventory-list"></div>
-        </section>
-
-        <section id="view-history" class="view" aria-labelledby="historyTitle">
-          <div class="section-head">
-            <h2 id="historyTitle">売上履歴</h2>
-            <span id="salesSummary" class="status-pill">¥0</span>
-          </div>
-          <div id="historyStats" class="stats-grid"></div>
-          <div id="historyList" class="history-list"></div>
-        </section>
-
-        <section id="view-settings" class="view" aria-labelledby="settingsTitle">
-          <div class="section-head">
-            <h2 id="settingsTitle">設定</h2>
-          </div>
-          <div class="panel form-stack">
-            <label class="field">
-              <span>よく使う価格ボタン</span>
-              <input id="quickPricesInput" type="text" inputmode="numeric" placeholder="500,1000,1500,2000" />
-            </label>
-            <label class="switch setting-line"><input id="settingsReuseCodesInput" type="checkbox" />商品番号を再利用する</label>
-            <label class="switch setting-line"><input id="normalScanEnabledInput" type="checkbox" />通常数字読み取りを有効にする</label>
-            <label class="field">
-              <span>明細画像共有の店舗名</span>
-              <input id="shopNameInput" type="text" maxlength="32" placeholder="HANDMADE MARKET" />
-            </label>
-            <label class="field">
-              <span>レシート下部メッセージ</span>
-              <input id="receiptMessageInput" type="text" maxlength="60" placeholder="ありがとうございました" />
-            </label>
-            <fieldset class="method-settings">
-              <legend>支払い方法の表示</legend>
-              <label class="switch"><input type="checkbox" data-payment-setting="Square" />Square</label>
-              <label class="switch"><input type="checkbox" data-payment-setting="PayPay" />PayPay</label>
-              <label class="switch"><input type="checkbox" data-payment-setting="楽天ペイ" />楽天ペイ</label>
-              <label class="switch"><input type="checkbox" data-payment-setting="現金" />現金</label>
-              <label class="switch"><input type="checkbox" data-payment-setting="その他" />その他</label>
-            </fieldset>
-            <button id="saveSettingsButton" class="primary" type="button">設定を保存</button>
-            <button id="backupDataButton" class="secondary" type="button">ローカルデータをバックアップ</button>
-            <label class="field">
-              <span>バックアップJSONを復元</span>
-              <input id="restoreDataInput" type="file" accept="application/json,.json" />
-            </label>
-            <button id="exportScanLogsButton" class="secondary" type="button">読み取りログCSVを書き出し</button>
-            <button id="clearScanLogsButton" class="secondary" type="button">読み取りログ削除</button>
-            <button id="resetDataButton" class="danger" type="button">データ初期化</button>
-          </div>
-        </section>
-      </main>
-
-      <nav class="bottom-nav" aria-label="主要画面">
-        <button class="nav active" type="button" data-view="home">ホーム</button>
-        <button class="nav" type="button" data-view="register">登録</button>
-        <button class="nav" type="button" data-view="sell">販売</button>
-        <button class="nav" type="button" data-view="inventory">商品</button>
-        <button class="nav" type="button" data-view="history">履歴</button>
-        <button class="nav" type="button" data-view="settings">設定</button>
-      </nav>
-    </div>
-
-    <template id="lineDigitTemplate">
-      <span class="line-digit" aria-hidden="true"></span>
-    </template>
-
-    <script src="./app.js"></script>
-  </body>
+    .camera-wrap{position:relative;background:#000;border-radius:18px;overflow:hidden;min-height:300px;border:1px solid var(--border)}
+    video.camera{width:100%;height:360px;object-fit:cover;display:block;background:#000}.camera-overlay{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;pointer-events:none}.scan-boxes{display:grid;grid-template-columns:repeat(3,1fr);gap:4px;width:54%;max-width:240px}.scan-cell{height:104px;border:4px solid rgba(255,255,255,.95);border-radius:12px;background:rgba(0,0,0,.08);position:relative}.scan-cell::after{content:attr(data-label);position:absolute;left:5px;top:5px;color:white;background:rgba(0,0,0,.55);font-size:11px;border-radius:999px;padding:2px 6px;font-weight:800}.camera-shade{position:absolute;inset:0;box-shadow:0 0 0 999px rgba(0,0,0,.38) inset}.snapshot{width:100%;border-radius:18px;border:1px solid var(--border);background:#111;margin-top:10px}.result-top{position:relative;z-index:5}.read-result-card{border:3px solid var(--ok);box-shadow:0 4px 18px rgba(4,120,87,.16)}.result-code{font-size:56px;background:#ecfdf5;border-color:#34d399;color:#064e3b}.digit-select{display:grid;grid-template-columns:repeat(10,1fr);gap:4px}.digit-select button{min-height:38px;padding:4px;border-radius:10px;font-size:16px}.digit-select button.active{background:var(--primary);color:#fff}.digit-select button.candidate{border:2px solid var(--ok)}.crop-row{display:grid;grid-template-columns:64px 1fr;gap:10px;align-items:center}.crop-img{width:64px;height:84px;object-fit:contain;background:#fff;border:1px solid var(--border);border-radius:12px}.confidence{font-size:12px;font-weight:800;color:var(--ok)}.camera-fallback{border:2px dashed var(--border);border-radius:18px;padding:14px;background:#fff} pre{white-space:pre-wrap;word-break:break-word;background:#f3f4f6;border-radius:12px;padding:10px;font-size:12px;max-height:180px;overflow:auto}
+  </style>
+</head>
+<body>
+<div class="app">
+  <header><button id="backBtn" class="back hidden">戻る</button><h1 id="title">線数字レジ Phase2-7</h1></header>
+  <main id="view"></main>
+  <div id="footer" class="footer hidden"></div>
+</div>
+<script src="app.js"></script>
+<script>if('serviceWorker' in navigator){window.addEventListener('load',()=>navigator.serviceWorker.register('./service-worker.js').catch(()=>{}));}</script>
+</body>
 </html>
