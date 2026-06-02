@@ -61,7 +61,7 @@ function render(){
   (pages[route.name]||home)(v, route.params||{});
 }
 
-function home(v){setTitle('線数字レジ Phase2-7'); const selling=sellingItems().length; const sold=state.items.filter(i=>i.status==='sold').length; v.innerHTML=`<div class="grid">
+function home(v){setTitle('線数字レジ Phase2-8'); const selling=sellingItems().length; const sold=state.items.filter(i=>i.status==='sold').length; v.innerHTML=`<div class="grid">
   ${noticeHtml()}${warnCartHtml()}
   <div class="card"><div class="muted">現在のカート</div><div class="big-total">${yen(cartTotal())}</div><div class="muted">${state.cart.length}件の商品 / 販売中 ${selling}点 / 販売済み ${sold}点</div></div>
   <button class="btn" onclick="go('registerSale')">レジを開く</button>
@@ -172,7 +172,7 @@ async function startLineCamera(){
     cameraStream = await navigator.mediaDevices.getUserMedia({video:{facingMode:{ideal:'environment'}}, audio:false});
     video.srcObject = cameraStream;
     await video.play();
-    $('#cameraStatus').textContent='カメラ起動中。線数字3桁を小さめの枠に合わせてください。暗い場所ではライト点灯を試します。';
+    $('#cameraStatus').textContent='カメラ起動中。線数字3桁を小さめの枠中央に合わせてください。手書きのズレを補正して判定します。';
     await setTorch(true);
   }catch(e){
     $('#cameraStatus').innerHTML='カメラを起動できませんでした。Safariのカメラ許可を確認するか、手入力を使ってください。';
@@ -184,7 +184,7 @@ function lineReader(v){
   stopCamera();
   lastSnapshotDataUrl=null;
   v.innerHTML=`<div class="grid">
-    <div class="notice"><b>Phase2-7：線数字読み取り改善版</b><br>枠を小さめにし、撮影後の読み取り結果を画面上部に表示します。暗い場所ではライト点灯を試します。</div>
+    <div class="notice"><b>Phase2-8：読み取り精度改善版</b><br>枠を小さめにし、手書き線数字を太さ・ズレに強く判定します。暗い場所ではライト点灯を試します。</div>
     <div id="scanNotice" class="success hidden"></div>
     <canvas id="captureCanvas" class="hidden"></canvas>
     <div id="snapshotArea" class="hidden grid result-top"></div>
@@ -279,34 +279,61 @@ function analyzeLineDigitFrame(canvas, boxes){
 }
 function analyzeLineDigitCrop(srcCanvas, box){
   const crop=document.createElement('canvas');
-  crop.width=96; crop.height=128;
+  crop.width=120; crop.height=150;
   const cctx=crop.getContext('2d');
-  // 手書き四角の外枠をできるだけ除外するため、枠内の内側だけを拡大する。
-  const mx=box.w*0.08, my=box.h*0.08;
+
+  // 枠内の中心寄りを使う。手書きの外枠や余白の影響を減らす。
+  const mx=box.w*0.10, my=box.h*0.10;
   cctx.drawImage(srcCanvas, box.x+mx, box.y+my, box.w-mx*2, box.h-my*2, 0,0,crop.width,crop.height);
-  const mask=imageToMask(crop);
+
+  const rawMask=imageToMask(crop);
+  const prepared=prepareDigitMask(rawMask);
   const scores=[];
-  for(let d=0; d<=9; d++) scores.push({digit:String(d), score:scoreMaskAgainstTemplate(mask, templateMask(String(d), crop.width, crop.height))});
+
+  // 小さな中央ドットはテンプレート比較の前に0候補を強める。
+  const dotScore=scoreCentralDot(rawMask);
+  for(let d=0; d<=9; d++){
+    const ds=String(d);
+    let score;
+    if(ds==='0'){
+      score=Math.max(dotScore, scoreMaskAgainstTemplate(prepared, templateMask(ds, prepared.w, prepared.h))*0.72);
+    }else{
+      score=scoreMaskAgainstTemplate(prepared, templateMask(ds, prepared.w, prepared.h));
+      score=Math.max(score, featureScore(prepared, ds));
+    }
+    scores.push({digit:ds, score});
+  }
+
   scores.sort((a,b)=>b.score-a.score);
   const best=scores[0];
-  const cropUrl=crop.toDataURL('image/jpeg',0.82);
+  const second=scores[1] || {score:0};
   const confidence=Math.max(0, Math.min(0.99, best.score));
-  return {digit: confidence>0.12 ? best.digit : '', confidence, alternatives:scores.slice(0,3), cropUrl};
+  const cropUrl=crop.toDataURL('image/jpeg',0.86);
+
+  // 低確信度でも候補を出す。半自動修正前提なので空欄にしすぎない。
+  const digit = confidence>0.08 ? best.digit : '';
+  return {digit, confidence, alternatives:scores.slice(0,3), cropUrl, margin:Math.round((best.score-second.score)*100)};
 }
+
 function imageToMask(canvas){
   const ctx=canvas.getContext('2d');
   const {width:w,height:h}=canvas;
   const img=ctx.getImageData(0,0,w,h).data;
   const lum=[];
-  for(let i=0;i<img.length;i+=4){lum.push(img[i]*0.299+img[i+1]*0.587+img[i+2]*0.114)}
+  for(let i=0;i<img.length;i+=4){
+    // 暗い線を抽出。屋外の影にもやや強くする。
+    lum.push(img[i]*0.299+img[i+1]*0.587+img[i+2]*0.114);
+  }
   const sorted=[...lum].sort((a,b)=>a-b);
-  const p20=sorted[Math.floor(sorted.length*0.20)] || 80;
-  const p55=sorted[Math.floor(sorted.length*0.55)] || 170;
-  const threshold=Math.min(165, Math.max(55, (p20+p55)/2));
+  const p10=sorted[Math.floor(sorted.length*0.10)] || 40;
+  const p30=sorted[Math.floor(sorted.length*0.30)] || 100;
+  const p65=sorted[Math.floor(sorted.length*0.65)] || 180;
+  const threshold=Math.min(178, Math.max(48, p10*0.45 + p30*0.35 + p65*0.20));
   let mask=new Uint8Array(w*h);
   for(let i=0;i<lum.length;i++) mask[i]=lum[i]<threshold ? 1 : 0;
   mask=removeTinyNoise(mask,w,h);
-  return {w,h,mask:dilate(mask,w,h,1)};
+  mask=dilate(mask,w,h,1);
+  return {w,h,mask};
 }
 function removeTinyNoise(mask,w,h){
   const out=new Uint8Array(mask.length);
@@ -320,41 +347,128 @@ function removeTinyNoise(mask,w,h){
 function dilate(mask,w,h,r=1){
   const out=new Uint8Array(mask.length);
   for(let y=0;y<h;y++) for(let x=0;x<w;x++){
-    let on=0; for(let dy=-r;dy<=r && !on;dy++) for(let dx=-r;dx<=r;dx++){const xx=x+dx, yy=y+dy; if(xx>=0&&yy>=0&&xx<w&&yy<h&&mask[yy*w+xx]){on=1; break}}
+    let on=0; for(let dy=-r;dy<=r && !on;dy++) for(let dx=-r;dx<=r;dx++){
+      const xx=x+dx, yy=y+dy; if(xx>=0&&yy>=0&&xx<w&&yy<h&&mask[yy*w+xx]){on=1; break}
+    }
     out[y*w+x]=on;
   }
   return out;
+}
+function bboxOfMask(m){
+  const {w,h,mask}=m; let minX=w,minY=h,maxX=-1,maxY=-1,count=0,sumX=0,sumY=0;
+  for(let y=0;y<h;y++) for(let x=0;x<w;x++) if(mask[y*w+x]){count++; sumX+=x; sumY+=y; if(x<minX)minX=x;if(x>maxX)maxX=x;if(y<minY)minY=y;if(y>maxY)maxY=y;}
+  return {minX,minY,maxX,maxY,count,cx:count?sumX/count:w/2,cy:count?sumY/count:h/2,width:maxX-minX+1,height:maxY-minY+1};
+}
+function prepareDigitMask(raw){
+  const {w,h}=raw;
+  let mask=raw.mask.slice();
+  // 手書きの四角外枠を拾いやすい端の領域を削る。
+  const edgeX=Math.round(w*0.12), edgeY=Math.round(h*0.10);
+  for(let y=0;y<h;y++) for(let x=0;x<w;x++){
+    if(x<edgeX || x>=w-edgeX || y<edgeY || y>=h-edgeY) mask[y*w+x]=0;
+  }
+  const b=bboxOfMask({w,h,mask});
+  const nw=96, nh=128;
+  const norm=new Uint8Array(nw*nh);
+  if(!b.count) return {w:nw,h:nh,mask:norm};
+
+  // 中央ドット用の小さな塊は、拡大しすぎない。
+  if(b.width<w*0.28 && b.height<h*0.28 && b.count/(w*h)<0.055){
+    const cx=Math.round(nw/2), cy=Math.round(nh/2);
+    const r=Math.max(4, Math.round(Math.min(nw,nh)*0.07));
+    for(let yy=cy-r; yy<=cy+r; yy++) for(let xx=cx-r; xx<=cx+r; xx++){
+      if(xx>=0&&yy>=0&&xx<nw&&yy<nh && (xx-cx)**2+(yy-cy)**2<=r*r) norm[yy*nw+xx]=1;
+    }
+    return {w:nw,h:nh,mask:dilate(norm,nw,nh,1)};
+  }
+
+  const padX=Math.round(nw*0.13), padY=Math.round(nh*0.13);
+  for(let y=0;y<h;y++) for(let x=0;x<w;x++) if(mask[y*w+x]){
+    const nx=Math.round(padX + (x-b.minX)/Math.max(1,b.width-1)*(nw-padX*2-1));
+    const ny=Math.round(padY + (y-b.minY)/Math.max(1,b.height-1)*(nh-padY*2-1));
+    if(nx>=0&&ny>=0&&nx<nw&&ny<nh) norm[ny*nw+nx]=1;
+  }
+  return {w:nw,h:nh,mask:dilate(removeTinyNoise(norm,nw,nh),nw,nh,1)};
+}
+function scoreCentralDot(raw){
+  const b=bboxOfMask(raw), {w,h}=raw;
+  if(!b.count) return 0;
+  const area=b.count/(w*h);
+  const bw=b.width/w, bh=b.height/h;
+  const centerDist=Math.hypot((b.cx/w)-0.5,(b.cy/h)-0.5);
+  let s=0;
+  if(area>0.002 && area<0.07) s+=0.42;
+  if(bw<0.38 && bh<0.38) s+=0.32;
+  if(centerDist<0.24) s+=0.30;
+  return Math.max(0, Math.min(0.99, s));
 }
 const TEMPLATE_CACHE={};
 function templateMask(d,w,h){
   const key=`${d}-${w}-${h}`; if(TEMPLATE_CACHE[key]) return TEMPLATE_CACHE[key];
   const c=document.createElement('canvas'); c.width=w; c.height=h;
   const ctx=c.getContext('2d'); ctx.fillStyle='#fff'; ctx.fillRect(0,0,w,h);
-  ctx.strokeStyle='#000'; ctx.fillStyle='#000'; ctx.lineWidth=Math.max(8, w*0.11); ctx.lineCap='round'; ctx.lineJoin='round';
+  ctx.strokeStyle='#000'; ctx.fillStyle='#000'; ctx.lineWidth=Math.max(10, w*0.15); ctx.lineCap='round'; ctx.lineJoin='round';
   const X=p=>p*w, Y=p=>p*h;
   const line=(x1,y1,x2,y2)=>{ctx.beginPath(); ctx.moveTo(X(x1),Y(y1)); ctx.lineTo(X(x2),Y(y2)); ctx.stroke();};
-  if(d==='0'){ctx.beginPath(); ctx.arc(X(.5),Y(.5),Math.max(5,w*.08),0,Math.PI*2); ctx.fill();}
-  if(d==='1') line(.5,.18,.5,.82);
-  if(d==='2') line(.18,.5,.82,.5);
-  if(d==='3'){line(.5,.18,.5,.82); line(.18,.5,.82,.5);}
-  if(d==='4') line(.2,.82,.8,.18);
-  if(d==='5') line(.2,.18,.8,.82);
-  if(d==='6'){line(.2,.18,.8,.82); line(.2,.82,.8,.18);}
-  if(d==='7'){ctx.beginPath(); ctx.moveTo(X(.2),Y(.82)); ctx.lineTo(X(.5),Y(.18)); ctx.lineTo(X(.8),Y(.82)); ctx.stroke();}
-  if(d==='8'){ctx.beginPath(); ctx.moveTo(X(.2),Y(.18)); ctx.lineTo(X(.5),Y(.82)); ctx.lineTo(X(.8),Y(.18)); ctx.stroke();}
-  if(d==='9'){ctx.beginPath(); ctx.moveTo(X(.5),Y(.12)); ctx.lineTo(X(.86),Y(.5)); ctx.lineTo(X(.5),Y(.88)); ctx.lineTo(X(.14),Y(.5)); ctx.closePath(); ctx.stroke();}
+  if(d==='0'){ctx.beginPath(); ctx.arc(X(.5),Y(.5),Math.max(7,w*.10),0,Math.PI*2); ctx.fill();}
+  if(d==='1') line(.5,.15,.5,.85);
+  if(d==='2') line(.15,.5,.85,.5);
+  if(d==='3'){line(.5,.15,.5,.85); line(.15,.5,.85,.5);}
+  if(d==='4') line(.18,.84,.82,.16);
+  if(d==='5') line(.18,.16,.82,.84);
+  if(d==='6'){line(.18,.16,.82,.84); line(.18,.84,.82,.16);}
+  if(d==='7'){ctx.beginPath(); ctx.moveTo(X(.18),Y(.84)); ctx.lineTo(X(.5),Y(.16)); ctx.lineTo(X(.82),Y(.84)); ctx.stroke();}
+  if(d==='8'){ctx.beginPath(); ctx.moveTo(X(.18),Y(.16)); ctx.lineTo(X(.5),Y(.84)); ctx.lineTo(X(.82),Y(.16)); ctx.stroke();}
+  if(d==='9'){ctx.beginPath(); ctx.moveTo(X(.5),Y(.10)); ctx.lineTo(X(.86),Y(.5)); ctx.lineTo(X(.5),Y(.90)); ctx.lineTo(X(.14),Y(.5)); ctx.closePath(); ctx.stroke();}
   const m=imageToMask(c);
   return TEMPLATE_CACHE[key]=m;
 }
 function scoreMaskAgainstTemplate(sample, tmpl){
   const sm=sample.mask, tm=tmpl.mask;
   let inter=0, union=0, sCount=0, tCount=0;
-  for(let i=0;i<sm.length;i++){ if(sm[i]) sCount++; if(tm[i]) tCount++; if(sm[i]&&tm[i]) inter++; if(sm[i]||tm[i]) union++; }
+  for(let i=0;i<sm.length;i++){
+    if(sm[i]) sCount++; if(tm[i]) tCount++; if(sm[i]&&tm[i]) inter++; if(sm[i]||tm[i]) union++;
+  }
   if(!sCount || !tCount) return 0;
   const jaccard=inter/(union||1);
   const coverage=inter/tCount;
-  const extra=Math.max(0,(sCount-inter)/(sCount||1));
-  return Math.max(0, jaccard*0.55 + coverage*0.55 - extra*0.18);
+  const sampleCoverage=inter/sCount;
+  const densityPenalty=Math.max(0, (sCount/(sm.length||1))-0.30)*0.35;
+  return Math.max(0, Math.min(0.99, jaccard*0.50 + coverage*0.32 + sampleCoverage*0.32 - densityPenalty));
+}
+function featureScore(m,d){
+  const paths={
+    '1':[[.5,.14,.5,.86]],
+    '2':[[.14,.5,.86,.5]],
+    '3':[[.5,.14,.5,.86],[.14,.5,.86,.5]],
+    '4':[[.18,.84,.82,.16]],
+    '5':[[.18,.16,.82,.84]],
+    '6':[[.18,.16,.82,.84],[.18,.84,.82,.16]],
+    '7':[[.18,.84,.5,.16],[.5,.16,.82,.84]],
+    '8':[[.18,.16,.5,.84],[.5,.84,.82,.16]],
+    '9':[[.5,.10,.86,.5],[.86,.5,.5,.90],[.5,.90,.14,.5],[.14,.5,.5,.10]],
+  };
+  const chosen=paths[d]; if(!chosen) return 0;
+  let hit=0, pathPix=0, inkOnPath=0, inkTotal=0;
+  const {w,h,mask}=m;
+  const tol=Math.max(5, Math.round(w*0.07));
+  for(let y=0;y<h;y++) for(let x=0;x<w;x++){
+    const on=!!mask[y*w+x]; if(on) inkTotal++;
+    let near=false;
+    for(const p of chosen){ if(distToSeg(x/w,y/h,p[0],p[1],p[2],p[3])*Math.max(w,h) <= tol){near=true; break;} }
+    if(near){pathPix++; if(on) inkOnPath++;}
+    if(on && near) hit++;
+  }
+  const cover=inkOnPath/(pathPix||1);
+  const clean=hit/(inkTotal||1);
+  return Math.max(0, Math.min(0.99, cover*0.55 + clean*0.45));
+}
+function distToSeg(px,py,x1,y1,x2,y2){
+  const vx=x2-x1, vy=y2-y1, wx=px-x1, wy=py-y1;
+  const c1=vx*wx+vy*wy, c2=vx*vx+vy*vy;
+  let t=c2?c1/c2:0; t=Math.max(0,Math.min(1,t));
+  const dx=px-(x1+t*vx), dy=py-(y1+t*vy);
+  return Math.hypot(dx,dy);
 }
 
 function saveRecognitionLog(analysis, correctedCode, result){
