@@ -13,6 +13,10 @@ let stack = [];
 let selectedPayment = 'paypay';
 let lastNotice = '';
 let torchOn = false;
+let lineScanMode = 'single';
+let singleDigits = ['', '', ''];
+let singleAnalysis = [null, null, null];
+let singleIndex = 0;
 
 function defaultState(){return {items:[], cart:[], sales:[], recognition_logs:[], settings:{shop_name:'', code_reuse_enabled:false, normal_digit_reading_enabled:true, preferred_payment_methods:['square','paypay','rakuten_pay','cash','other'], quick_price_buttons:[500,800,1000,1200,1500,2000], receipt_message:'ありがとうございました'}}}
 function load(){try{const loaded=JSON.parse(localStorage.getItem(KEY))||{}; return {...defaultState(), ...loaded, settings:{...defaultState().settings, ...(loaded.settings||{})}}}catch(e){return defaultState()}}
@@ -61,14 +65,14 @@ function render(){
   (pages[route.name]||home)(v, route.params||{});
 }
 
-function home(v){setTitle('線数字レジ Phase2-8'); const selling=sellingItems().length; const sold=state.items.filter(i=>i.status==='sold').length; v.innerHTML=`<div class="grid">
+function home(v){setTitle('線数字レジ Phase2-9'); const selling=sellingItems().length; const sold=state.items.filter(i=>i.status==='sold').length; v.innerHTML=`<div class="grid">
   ${noticeHtml()}${warnCartHtml()}
   <div class="card"><div class="muted">現在のカート</div><div class="big-total">${yen(cartTotal())}</div><div class="muted">${state.cart.length}件の商品 / 販売中 ${selling}点 / 販売済み ${sold}点</div></div>
   <button class="btn" onclick="go('registerSale')">レジを開く</button>
   <div class="two"><button class="btn secondary" onclick="go('register')">商品登録</button><button class="btn secondary" onclick="go('items')">商品一覧</button></div>
   <div class="two"><button class="btn secondary" onclick="go('sales')">売上履歴</button><button class="btn secondary" onclick="go('settings')">設定</button></div>
   <button class="btn secondary" onclick="go('recognitionLogs')">読み取りログを見る</button>
-  <div class="notice">Phase2-7：読み取り結果を上部表示・小さめ枠・ライト点灯対応を追加しました。</div>
+  <div class="notice">Phase2-9：線数字は1桁ずつ読み取りを標準にしました。枠間隔の合わせづらさとピンぼけを減らします。</div>
 </div>`}
 
 function register(v){setTitle('商品登録'); const buttons=state.settings.quick_price_buttons||[]; v.innerHTML=`<form id="regForm" class="grid card">
@@ -183,17 +187,20 @@ function lineReader(v){
   setTitle('線数字読み取り');
   stopCamera();
   lastSnapshotDataUrl=null;
+  lineScanMode='single'; singleDigits=['','','']; singleAnalysis=[null,null,null]; singleIndex=0;
   v.innerHTML=`<div class="grid">
-    <div class="notice"><b>Phase2-8：読み取り精度改善版</b><br>枠を小さめにし、手書き線数字を太さ・ズレに強く判定します。暗い場所ではライト点灯を試します。</div>
+    <div class="notice"><b>Phase2-9：1桁ずつ読み取り標準版</b><br>3桁の枠間隔合わせが難しいため、標準は1桁ずつ読み取りに変更しました。大きめの中央枠に1桁だけ合わせて撮影してください。</div>
     <div id="scanNotice" class="success hidden"></div>
     <canvas id="captureCanvas" class="hidden"></canvas>
     <div id="snapshotArea" class="hidden grid result-top"></div>
+    <div class="two"><button class="btn" id="singleModeBtn">1桁ずつ読む</button><button class="btn secondary" id="tripleModeBtn">3桁一括</button></div>
     <div class="camera-wrap">
       <video id="cameraVideo" class="camera" playsinline muted autoplay></video>
       <div class="camera-shade"></div>
-      <div class="camera-overlay"><div class="scan-boxes"><div class="scan-cell" data-label="百の位"></div><div class="scan-cell" data-label="十の位"></div><div class="scan-cell" data-label="一の位"></div></div></div>
+      <div class="camera-overlay"></div>
     </div>
     <div id="cameraStatus" class="muted">カメラを起動しています...</div>
+    <div class="muted">推奨：縦2cm×横1cm程度、黒サインペン、15〜25cm離す。ぼける場合は少し離してください。</div>
     <div id="cameraFallback" class="camera-fallback hidden"><button class="btn" onclick="nav('keypad')">3桁手入力へ</button><p class="muted">iPhoneではSafariのカメラ許可が必要です。ホーム画面版で動かない場合はSafariからURLを開いて試してください。</p></div>
     <button class="btn" id="captureBtn">撮影して読み取る</button>
     <div class="two"><button class="btn secondary" id="toggleTorch">ライトON</button><button class="btn secondary" id="restartCam">カメラ再起動</button></div>
@@ -203,9 +210,65 @@ function lineReader(v){
   $('#captureBtn').onclick=captureLineDigits;
   $('#restartCam').onclick=startLineCamera;
   $('#toggleTorch').onclick=()=>setTorch(!torchOn);
+  $('#singleModeBtn').onclick=()=>setScanMode('single');
+  $('#tripleModeBtn').onclick=()=>setScanMode('triple');
   startLineCamera();
 }
+
+function captureSingleDigit(){
+  const video=$('#cameraVideo'); const canvas=$('#captureCanvas');
+  if(!video || !video.videoWidth){ return alert('カメラ映像がまだ準備できていません'); }
+  const maxW=900; const scale=Math.min(1,maxW/video.videoWidth);
+  canvas.width=Math.round(video.videoWidth*scale); canvas.height=Math.round(video.videoHeight*scale);
+  const ctx=canvas.getContext('2d');
+  ctx.drawImage(video,0,0,canvas.width,canvas.height);
+  const boxes=getScanBoxes(canvas.width, canvas.height);
+  const result=analyzeLineDigitCrop(canvas, boxes[0]);
+  singleAnalysis[singleIndex]=result;
+  if(result.digit!=='') singleDigits[singleIndex]=result.digit;
+  drawScanGuide(ctx, boxes, canvas.width);
+  lastSnapshotDataUrl=canvas.toDataURL('image/jpeg',0.86);
+
+  const area=$('#snapshotArea'); area.classList.remove('hidden');
+  const labels=['百の位','十の位','一の位'];
+  const renderSingle=()=>{
+    area.innerHTML=`<div class="card grid read-result-card">
+      <b>${labels[singleIndex]}を読み取りました</b>
+      <div class="display-code result-code">${singleDigits.map(x=>x===''?'-':x).join('')}</div>
+      <div class="success">候補：${result.digit || '-'} / ${Math.round((result.confidence||0)*100)}%。違う場合は数字を選んでください。</div>
+      <img class="crop-img large" src="${result.cropUrl}">
+      <div class="muted">上位候補：${(result.alternatives||[]).map(a=>`${a.digit}:${Math.round(a.score*100)}%`).join(' / ')}</div>
+      <div class="digit-select big-select">${[0,1,2,3,4,5,6,7,8,9].map(n=>`<button class="btn secondary small ${String(n)===String(singleDigits[singleIndex])?'active':''} ${String(n)===String(result.digit)?'candidate':''}" data-single-digit="${n}">${n}</button>`).join('')}</div>
+      <div class="two"><button class="btn secondary" id="prevDigit">前の桁</button><button class="btn" id="nextDigit">次の桁へ</button></div>
+      <button class="btn" id="searchSingle" ${singleDigits.some(x=>x==='')?'disabled':''}>この番号で商品確認</button>
+      <details><summary>撮影画像を表示</summary><img class="snapshot" src="${lastSnapshotDataUrl}"></details>
+      <button class="btn secondary" id="retakeSingle">この桁を撮り直す</button>
+      <button class="btn secondary" onclick="stopCamera();nav('keypad')">3桁手入力へ</button>
+    </div>`;
+    $$('[data-single-digit]').forEach(b=>b.onclick=()=>{singleDigits[singleIndex]=b.dataset.singleDigit; renderSingle();});
+    $('#retakeSingle').onclick=()=>{area.classList.add('hidden'); area.innerHTML='';};
+    $('#prevDigit').onclick=()=>{singleIndex=Math.max(0,singleIndex-1); updateScanOverlay(); area.classList.add('hidden'); area.innerHTML=''; const s=$('#cameraStatus'); if(s) s.textContent=`${labels[singleIndex]}を中央枠に合わせて撮影してください。`;};
+    $('#nextDigit').onclick=()=>{singleIndex=Math.min(2,singleIndex+1); updateScanOverlay(); area.classList.add('hidden'); area.innerHTML=''; const s=$('#cameraStatus'); if(s) s.textContent=`${labels[singleIndex]}を中央枠に合わせて撮影してください。`;};
+    $('#searchSingle').onclick=()=>confirmSingleCode();
+  };
+  renderSingle();
+  signalReadComplete();
+  area.scrollIntoView({behavior:'smooth', block:'start'});
+}
+function confirmSingleCode(){
+  if(singleDigits.some(x=>x==='')) return alert('3桁すべてを読み取るか選択してください');
+  const itemCode=singleDigits.join('');
+  const item=state.items.find(i=>i.item_code===itemCode && !i.deleted_at);
+  saveRecognitionLog(singleAnalysis.map(x=>x||{digit:'',confidence:0,alternatives:[]}), itemCode, item ? item.status : 'missing');
+  stopCamera();
+  if(!item) return nav('manualPrice',{missingCode:itemCode});
+  if(item.status==='sold') return alert('この商品は販売済みです。通常はカートに追加できません。');
+  if(item.status!=='selling') return alert('この商品は販売対象外です。');
+  nav('confirmItem',{id:item.id, fromCamera:true});
+}
+
 function captureLineDigits(){
+  if(lineScanMode==='single') return captureSingleDigit();
   const video=$('#cameraVideo'); const canvas=$('#captureCanvas');
   if(!video || !video.videoWidth){ return alert('カメラ映像がまだ準備できていません'); }
   const maxW=900; const scale=Math.min(1,maxW/video.videoWidth);
@@ -265,7 +328,13 @@ function captureLineDigits(){
 }
 
 function getScanBoxes(w,h){
-  const boxW=w*0.54, gap=w*0.01, cellW=(boxW-gap*2)/3, cellH=Math.min(h*0.25, 165);
+  if(lineScanMode==='single'){
+    const cellW=Math.min(w*0.30, 190), cellH=Math.min(h*0.46, 290);
+    const x=(w-cellW)/2, y=(h-cellH)/2;
+    return [{x,y,w:cellW,h:cellH,label:['百','十','一'][singleIndex]}];
+  }
+  // 3桁一括は枠間隔を広めにして、隣の記号が混ざるのを減らす。
+  const boxW=w*0.74, gap=w*0.045, cellW=(boxW-gap*2)/3, cellH=Math.min(h*0.38, 240);
   const startX=(w-boxW)/2, y=(h-cellH)/2;
   return [0,1,2].map(i=>({x:startX+i*(cellW+gap), y, w:cellW, h:cellH, label:['百','十','一'][i]}));
 }
@@ -283,7 +352,7 @@ function analyzeLineDigitCrop(srcCanvas, box){
   const cctx=crop.getContext('2d');
 
   // 枠内の中心寄りを使う。手書きの外枠や余白の影響を減らす。
-  const mx=box.w*0.10, my=box.h*0.10;
+  const mx=box.w*(lineScanMode==='single'?0.08:0.12), my=box.h*(lineScanMode==='single'?0.08:0.12);
   cctx.drawImage(srcCanvas, box.x+mx, box.y+my, box.w-mx*2, box.h-my*2, 0,0,crop.width,crop.height);
 
   const rawMask=imageToMask(crop);
