@@ -72,7 +72,7 @@ function home(v){setTitle('線数字レジ Phase2-9'); const selling=sellingItem
   <div class="two"><button class="btn secondary" onclick="go('register')">商品登録</button><button class="btn secondary" onclick="go('items')">商品一覧</button></div>
   <div class="two"><button class="btn secondary" onclick="go('sales')">売上履歴</button><button class="btn secondary" onclick="go('settings')">設定</button></div>
   <button class="btn secondary" onclick="go('recognitionLogs')">読み取りログを見る</button>
-  <div class="notice">Phase2-9：線数字は1桁ずつ読み取りを標準にしました。枠間隔の合わせづらさとピンぼけを減らします。</div>
+  <div class="notice">Phase2-10：1桁専用枠を追加しました。中央の黄色い枠に1つの手書き枠だけを入れ、左右の隣枠は暗いエリアへ外してください。</div>
 </div>`}
 
 function register(v){setTitle('商品登録'); const buttons=state.settings.quick_price_buttons||[]; v.innerHTML=`<form id="regForm" class="grid card">
@@ -176,7 +176,7 @@ async function startLineCamera(){
     cameraStream = await navigator.mediaDevices.getUserMedia({video:{facingMode:{ideal:'environment'}}, audio:false});
     video.srcObject = cameraStream;
     await video.play();
-    $('#cameraStatus').textContent='カメラ起動中。線数字3桁を小さめの枠中央に合わせてください。手書きのズレを補正して判定します。';
+    $('#cameraStatus').textContent='カメラ起動中。1桁ずつ読む場合は、中央の黄色い枠に1つの手書き枠だけを合わせてください。隣の枠は左右の暗いエリアへ外してください。';
     await setTorch(true);
   }catch(e){
     $('#cameraStatus').innerHTML='カメラを起動できませんでした。Safariのカメラ許可を確認するか、手入力を使ってください。';
@@ -189,7 +189,7 @@ function lineReader(v){
   lastSnapshotDataUrl=null;
   lineScanMode='single'; singleDigits=['','','']; singleAnalysis=[null,null,null]; singleIndex=0;
   v.innerHTML=`<div class="grid">
-    <div class="notice"><b>Phase2-9：1桁ずつ読み取り標準版</b><br>3桁の枠間隔合わせが難しいため、標準は1桁ずつ読み取りに変更しました。大きめの中央枠に1桁だけ合わせて撮影してください。</div>
+    <div class="notice"><b>Phase2-10：1桁専用枠つき読み取り版</b><br>中央の黄色い枠に、読みたい1桁の手書き枠だけを入れてください。左右に見える隣の枠は、暗いエリア側へ外してください。</div>
     <div id="scanNotice" class="success hidden"></div>
     <canvas id="captureCanvas" class="hidden"></canvas>
     <div id="snapshotArea" class="hidden grid result-top"></div>
@@ -200,7 +200,7 @@ function lineReader(v){
       <div class="camera-overlay"></div>
     </div>
     <div id="cameraStatus" class="muted">カメラを起動しています...</div>
-    <div class="muted">推奨：縦2cm×横1cm程度、黒サインペン、15〜25cm離す。ぼける場合は少し離してください。</div>
+    <div class="notice">撮影のコツ：1桁の外枠ごと中央の黄色枠に合わせます。隣の枠が黄色枠に入ると誤読します。ぼける場合は15〜25cm程度まで少し離してください。</div>
     <div id="cameraFallback" class="camera-fallback hidden"><button class="btn" onclick="nav('keypad')">3桁手入力へ</button><p class="muted">iPhoneではSafariのカメラ許可が必要です。ホーム画面版で動かない場合はSafariからURLを開いて試してください。</p></div>
     <button class="btn" id="captureBtn">撮影して読み取る</button>
     <div class="two"><button class="btn secondary" id="toggleTorch">ライトON</button><button class="btn secondary" id="restartCam">カメラ再起動</button></div>
@@ -212,7 +212,37 @@ function lineReader(v){
   $('#toggleTorch').onclick=()=>setTorch(!torchOn);
   $('#singleModeBtn').onclick=()=>setScanMode('single');
   $('#tripleModeBtn').onclick=()=>setScanMode('triple');
+  updateScanOverlay();
   startLineCamera();
+}
+
+function setScanMode(mode){
+  lineScanMode = mode;
+  const singleBtn = $('#singleModeBtn');
+  const tripleBtn = $('#tripleModeBtn');
+  if(singleBtn) singleBtn.className = mode==='single' ? 'btn' : 'btn secondary';
+  if(tripleBtn) tripleBtn.className = mode==='triple' ? 'btn' : 'btn secondary';
+  updateScanOverlay();
+  const s=$('#cameraStatus');
+  if(s){
+    s.textContent = mode==='single'
+      ? `${['百の位','十の位','一の位'][singleIndex]}：中央の黄色枠に1つの手書き枠だけを合わせてください。隣の枠は暗いエリアへ外してください。`
+      : '3桁一括：3つの枠をそれぞれ百・十・一の位に合わせてください。';
+  }
+}
+function updateScanOverlay(){
+  const overlay=$('.camera-overlay');
+  if(!overlay) return;
+  const label=['百','十','一'][singleIndex] || '';
+  if(lineScanMode==='single'){
+    overlay.innerHTML = `<div class="single-focus">
+      <div class="side-block">隣の枠は<br>ここへ外す</div>
+      <div class="scan-boxes single"><div class="scan-cell single" data-label="${label}"><div class="inner-target"></div></div></div>
+      <div class="side-block">隣の枠は<br>ここへ外す</div>
+    </div>`;
+  }else{
+    overlay.innerHTML = `<div class="scan-boxes"><div class="scan-cell" data-label="百"></div><div class="scan-cell" data-label="十"></div><div class="scan-cell" data-label="一"></div></div>`;
+  }
 }
 
 function captureSingleDigit(){
@@ -329,7 +359,7 @@ function captureLineDigits(){
 
 function getScanBoxes(w,h){
   if(lineScanMode==='single'){
-    const cellW=Math.min(w*0.30, 190), cellH=Math.min(h*0.46, 290);
+    const cellW=Math.min(w*0.24, 150), cellH=Math.min(h*0.46, 290);
     const x=(w-cellW)/2, y=(h-cellH)/2;
     return [{x,y,w:cellW,h:cellH,label:['百','十','一'][singleIndex]}];
   }
@@ -352,7 +382,7 @@ function analyzeLineDigitCrop(srcCanvas, box){
   const cctx=crop.getContext('2d');
 
   // 枠内の中心寄りを使う。手書きの外枠や余白の影響を減らす。
-  const mx=box.w*(lineScanMode==='single'?0.08:0.12), my=box.h*(lineScanMode==='single'?0.08:0.12);
+  const mx=box.w*(lineScanMode==='single'?0.18:0.12), my=box.h*(lineScanMode==='single'?0.07:0.12);
   cctx.drawImage(srcCanvas, box.x+mx, box.y+my, box.w-mx*2, box.h-my*2, 0,0,crop.width,crop.height);
 
   const rawMask=imageToMask(crop);
