@@ -65,14 +65,14 @@ function render(){
   (pages[route.name]||home)(v, route.params||{});
 }
 
-function home(v){setTitle('線数字レジ Phase2-9'); const selling=sellingItems().length; const sold=state.items.filter(i=>i.status==='sold').length; v.innerHTML=`<div class="grid">
+function home(v){setTitle('線数字レジ Phase2-12'); const selling=sellingItems().length; const sold=state.items.filter(i=>i.status==='sold').length; v.innerHTML=`<div class="grid">
   ${noticeHtml()}${warnCartHtml()}
   <div class="card"><div class="muted">現在のカート</div><div class="big-total">${yen(cartTotal())}</div><div class="muted">${state.cart.length}件の商品 / 販売中 ${selling}点 / 販売済み ${sold}点</div></div>
   <button class="btn" onclick="go('registerSale')">レジを開く</button>
   <div class="two"><button class="btn secondary" onclick="go('register')">商品登録</button><button class="btn secondary" onclick="go('items')">商品一覧</button></div>
   <div class="two"><button class="btn secondary" onclick="go('sales')">売上履歴</button><button class="btn secondary" onclick="go('settings')">設定</button></div>
   <button class="btn secondary" onclick="go('recognitionLogs')">読み取りログを見る</button>
-  <div class="notice">Phase2-10：1桁専用枠を追加しました。中央の黄色い枠に1つの手書き枠だけを入れ、左右の隣枠は暗いエリアへ外してください。</div>
+  <div class="notice">Phase2-12：撮影枠の縦長さを短くし、隣の数字や上下の余白を拾いにくくしました。修正後は3桁番号入力で確認します。</div>
 </div>`}
 
 function register(v){setTitle('商品登録'); const buttons=state.settings.quick_price_buttons||[]; v.innerHTML=`<form id="regForm" class="grid card">
@@ -189,7 +189,7 @@ function lineReader(v){
   lastSnapshotDataUrl=null;
   lineScanMode='single'; singleDigits=['','','']; singleAnalysis=[null,null,null]; singleIndex=0;
   v.innerHTML=`<div class="grid">
-    <div class="notice"><b>Phase2-10：1桁専用枠つき読み取り版</b><br>中央の黄色い枠に、読みたい1桁の手書き枠だけを入れてください。左右に見える隣の枠は、暗いエリア側へ外してください。</div>
+    <div class="notice"><b>Phase2-12：短い撮影枠＋手動確認優先版</b><br>中央の短い黄色枠に、読みたい1桁だけを入れてください。隣の数字や上下の枠が入らない位置で撮影してください。</div>
     <div id="scanNotice" class="success hidden"></div>
     <canvas id="captureCanvas" class="hidden"></canvas>
     <div id="snapshotArea" class="hidden grid result-top"></div>
@@ -200,7 +200,7 @@ function lineReader(v){
       <div class="camera-overlay"></div>
     </div>
     <div id="cameraStatus" class="muted">カメラを起動しています...</div>
-    <div class="notice">撮影のコツ：1桁の外枠ごと中央の黄色枠に合わせます。隣の枠が黄色枠に入ると誤読します。ぼける場合は15〜25cm程度まで少し離してください。</div>
+    <div class="notice">撮影のコツ：中央の黄色い小枠には1桁だけを入れます。隣の数字や枠は絶対に入れないでください。ぼける場合は15〜25cm程度まで少し離してください。</div>
     <div id="cameraFallback" class="camera-fallback hidden"><button class="btn" onclick="nav('keypad')">3桁手入力へ</button><p class="muted">iPhoneではSafariのカメラ許可が必要です。ホーム画面版で動かない場合はSafariからURLを開いて試してください。</p></div>
     <button class="btn" id="captureBtn">撮影して読み取る</button>
     <div class="two"><button class="btn secondary" id="toggleTorch">ライトON</button><button class="btn secondary" id="restartCam">カメラ再起動</button></div>
@@ -226,7 +226,7 @@ function setScanMode(mode){
   const s=$('#cameraStatus');
   if(s){
     s.textContent = mode==='single'
-      ? `${['百の位','十の位','一の位'][singleIndex]}：中央の黄色枠に1つの手書き枠だけを合わせてください。隣の枠は暗いエリアへ外してください。`
+      ? `${['百の位','十の位','一の位'][singleIndex]}：中央の黄色い小枠に1桁だけを入れてください。隣の数字は枠外へ外してください。`
       : '3桁一括：3つの枠をそれぞれ百・十・一の位に合わせてください。';
   }
 }
@@ -270,12 +270,23 @@ function captureSingleDigit(){
       <div class="muted">上位候補：${(result.alternatives||[]).map(a=>`${a.digit}:${Math.round(a.score*100)}%`).join(' / ')}</div>
       <div class="digit-select big-select">${[0,1,2,3,4,5,6,7,8,9].map(n=>`<button class="btn secondary small ${String(n)===String(singleDigits[singleIndex])?'active':''} ${String(n)===String(result.digit)?'candidate':''}" data-single-digit="${n}">${n}</button>`).join('')}</div>
       <div class="two"><button class="btn secondary" id="prevDigit">前の桁</button><button class="btn" id="nextDigit">次の桁へ</button></div>
-      <button class="btn" id="searchSingle" ${singleDigits.some(x=>x==='')?'disabled':''}>この番号で商品確認</button>
+      <button class="btn" id="searchSingle" ${singleDigits.some(x=>x==='')?'disabled':''}>3桁番号入力で確認</button>
       <details><summary>撮影画像を表示</summary><img class="snapshot" src="${lastSnapshotDataUrl}"></details>
       <button class="btn secondary" id="retakeSingle">この桁を撮り直す</button>
       <button class="btn secondary" onclick="stopCamera();nav('keypad')">3桁手入力へ</button>
     </div>`;
-    $$('[data-single-digit]').forEach(b=>b.onclick=()=>{singleDigits[singleIndex]=b.dataset.singleDigit; renderSingle();});
+    $$('[data-single-digit]').forEach(b=>b.onclick=()=>{
+      singleDigits[singleIndex]=b.dataset.singleDigit;
+      // 修正したら次の桁へ。3桁そろったら3桁番号入力画面で最終確認。
+      if(singleIndex<2){
+        singleIndex++; updateScanOverlay(); area.classList.add('hidden'); area.innerHTML='';
+        const s=$('#cameraStatus'); if(s) s.textContent=`${labels[singleIndex]}を中央の小枠に合わせて撮影してください。`;
+      }else if(!singleDigits.some(x=>x==='')){
+        goKeypadFromScan(singleDigits.join(''));
+      }else{
+        renderSingle();
+      }
+    });
     $('#retakeSingle').onclick=()=>{area.classList.add('hidden'); area.innerHTML='';};
     $('#prevDigit').onclick=()=>{singleIndex=Math.max(0,singleIndex-1); updateScanOverlay(); area.classList.add('hidden'); area.innerHTML=''; const s=$('#cameraStatus'); if(s) s.textContent=`${labels[singleIndex]}を中央枠に合わせて撮影してください。`;};
     $('#nextDigit').onclick=()=>{singleIndex=Math.min(2,singleIndex+1); updateScanOverlay(); area.classList.add('hidden'); area.innerHTML=''; const s=$('#cameraStatus'); if(s) s.textContent=`${labels[singleIndex]}を中央枠に合わせて撮影してください。`;};
@@ -287,14 +298,12 @@ function captureSingleDigit(){
 }
 function confirmSingleCode(){
   if(singleDigits.some(x=>x==='')) return alert('3桁すべてを読み取るか選択してください');
-  const itemCode=singleDigits.join('');
-  const item=state.items.find(i=>i.item_code===itemCode && !i.deleted_at);
-  saveRecognitionLog(singleAnalysis.map(x=>x||{digit:'',confidence:0,alternatives:[]}), itemCode, item ? item.status : 'missing');
+  goKeypadFromScan(singleDigits.join(''));
+}
+function goKeypadFromScan(itemCode){
+  saveRecognitionLog(singleAnalysis.map(x=>x||{digit:'',confidence:0,alternatives:[]}), itemCode, 'scan_corrected');
   stopCamera();
-  if(!item) return nav('manualPrice',{missingCode:itemCode});
-  if(item.status==='sold') return alert('この商品は販売済みです。通常はカートに追加できません。');
-  if(item.status!=='selling') return alert('この商品は販売対象外です。');
-  nav('confirmItem',{id:item.id, fromCamera:true});
+  nav('keypad',{prefill:itemCode, fromScan:true});
 }
 
 function captureLineDigits(){
@@ -319,7 +328,7 @@ function captureLineDigits(){
     <b>読み取り結果</b>
     <div id="readCode" class="display-code result-code">---</div>
     <div class="success">読み取りました。番号を確認してから商品確認へ進んでください。</div>
-    <button class="btn" id="searchShot">この番号で商品確認</button>
+    <button class="btn" id="searchShot">3桁番号入力で確認</button>
     <details><summary>撮影画像と桁ごとの修正を表示</summary><img class="snapshot" src="${lastSnapshotDataUrl}"><div id="digitRows" class="grid"></div></details>
     <button class="btn secondary" id="retake">撮り直す</button>
     <button class="btn secondary" onclick="stopCamera();nav('keypad')">3桁手入力へ</button>
@@ -344,13 +353,9 @@ function captureLineDigits(){
   $('#searchShot').onclick=()=>{
     if(code.some(x=>x==='')) return alert('3桁を選んでください');
     const itemCode=code.join('');
-    const item=state.items.find(i=>i.item_code===itemCode && !i.deleted_at);
-    saveRecognitionLog(analysis, itemCode, item ? item.status : 'missing');
+    saveRecognitionLog(analysis, itemCode, 'scan_corrected');
     stopCamera();
-    if(!item) return nav('manualPrice',{missingCode:itemCode});
-    if(item.status==='sold') return alert('この商品は販売済みです。通常はカートに追加できません。');
-    if(item.status!=='selling') return alert('この商品は販売対象外です。');
-    nav('confirmItem',{id:item.id, fromCamera:true});
+    nav('keypad',{prefill:itemCode, fromScan:true});
   };
   renderChoice();
   signalReadComplete();
@@ -359,12 +364,13 @@ function captureLineDigits(){
 
 function getScanBoxes(w,h){
   if(lineScanMode==='single'){
-    const cellW=Math.min(w*0.24, 150), cellH=Math.min(h*0.46, 290);
+    // Phase2-12: 1桁用は縦長すぎない短い枠にして、上下・隣の数字や外枠を拾わない。
+    const cellW=Math.min(w*0.145, 86), cellH=Math.min(h*0.24, 150);
     const x=(w-cellW)/2, y=(h-cellH)/2;
     return [{x,y,w:cellW,h:cellH,label:['百','十','一'][singleIndex]}];
   }
-  // 3桁一括は枠間隔を広めにして、隣の記号が混ざるのを減らす。
-  const boxW=w*0.74, gap=w*0.045, cellW=(boxW-gap*2)/3, cellH=Math.min(h*0.38, 240);
+  // 3桁一括は中央寄りにして外側の映り込みを減らす。精度確認用。
+  const boxW=w*0.62, gap=w*0.065, cellW=(boxW-gap*2)/3, cellH=Math.min(h*0.25, 160);
   const startX=(w-boxW)/2, y=(h-cellH)/2;
   return [0,1,2].map(i=>({x:startX+i*(cellW+gap), y, w:cellW, h:cellH, label:['百','十','一'][i]}));
 }
@@ -382,7 +388,7 @@ function analyzeLineDigitCrop(srcCanvas, box){
   const cctx=crop.getContext('2d');
 
   // 枠内の中心寄りを使う。手書きの外枠や余白の影響を減らす。
-  const mx=box.w*(lineScanMode==='single'?0.18:0.12), my=box.h*(lineScanMode==='single'?0.07:0.12);
+  const mx=box.w*(lineScanMode==='single'?0.10:0.14), my=box.h*(lineScanMode==='single'?0.12:0.14);
   cctx.drawImage(srcCanvas, box.x+mx, box.y+my, box.w-mx*2, box.h-my*2, 0,0,crop.width,crop.height);
 
   const rawMask=imageToMask(crop);
@@ -607,7 +613,7 @@ function exportRecognitionLogs(){
 }
 function clearRecognitionLogs(){ if(confirm('読み取りログを削除しますか？商品・売上データは削除されません。')){state.recognition_logs=[]; save(); render();} }
 
-function keypad(v){setTitle('3桁番号入力'); v.innerHTML=`<div class="grid"><div id="display" class="display-code">---</div><div class="kbd">${[1,2,3,4,5,6,7,8,9].map(n=>`<button class="btn secondary" data-n="${n}">${n}</button>`).join('')}<button class="btn secondary" id="clear">C</button><button class="btn secondary" data-n="0">0</button><button class="btn secondary" id="del">←</button></div><button class="btn" id="search">検索</button><button class="btn secondary" onclick="nav('manualPrice')">番号がないので価格だけ追加</button></div>`; let val=''; const upd=()=>$('#display').textContent=val?val.padStart(3,'0').slice(-3):'---'; $$('[data-n]').forEach(b=>b.onclick=()=>{if(val.length<3){val+=b.dataset.n; upd()}}); $('#clear').onclick=()=>{val=''; upd()}; $('#del').onclick=()=>{val=val.slice(0,-1); upd()}; $('#search').onclick=()=>{if(!val)return alert('番号を入力してください'); const code=val.padStart(3,'0').slice(-3); const item=state.items.find(i=>i.item_code===code && !i.deleted_at); if(!item) return nav('manualPrice',{missingCode:code}); if(item.status==='sold') return alert('この商品は販売済みです。通常はカートに追加できません。'); if(item.status!=='selling') return alert('この商品は販売対象外です。'); nav('confirmItem',{id:item.id})};}
+function keypad(v,{prefill='',fromScan=false}={}){setTitle('3桁番号入力'); v.innerHTML=`<div class="grid">${fromScan?'<div class="success">読み取り結果を入れました。違う場合はCで消して入力し直してください。</div>':''}<div id="display" class="display-code">---</div><div class="kbd">${[1,2,3,4,5,6,7,8,9].map(n=>`<button class="btn secondary" data-n="${n}">${n}</button>`).join('')}<button class="btn secondary" id="clear">C</button><button class="btn secondary" data-n="0">0</button><button class="btn secondary" id="del">←</button></div><button class="btn" id="search">検索</button><button class="btn secondary" onclick="nav('manualPrice')">番号がないので価格だけ追加</button></div>`; let val=String(prefill||'').replace(/\D/g,'').slice(-3); const upd=()=>$('#display').textContent=val?val.padStart(3,'0').slice(-3):'---'; $$('[data-n]').forEach(b=>b.onclick=()=>{if(val.length<3){val+=b.dataset.n; upd()}}); $('#clear').onclick=()=>{val=''; upd()}; $('#del').onclick=()=>{val=val.slice(0,-1); upd()}; $('#search').onclick=()=>{if(!val)return alert('番号を入力してください'); const code=val.padStart(3,'0').slice(-3); const item=state.items.find(i=>i.item_code===code && !i.deleted_at); if(!item) return nav('manualPrice',{missingCode:code}); if(item.status==='sold') return alert('この商品は販売済みです。通常はカートに追加できません。'); if(item.status!=='selling') return alert('この商品は販売対象外です。'); nav('confirmItem',{id:item.id})}; upd();}
 function confirmItem(v,{id}){const item=state.items.find(i=>i.id===id); setTitle('商品確認'); if(!item){v.innerHTML='商品が見つかりません'; return} v.innerHTML=`<div class="grid card"><img class="hero-img" src="${item.image_uri}"><div class="code">${item.item_code}</div><h2>${itemName(item)}</h2><div class="big-total">${yen(item.price)}</div><span class="badge ${item.status}">${statusLabel(item.status)}</span><button class="btn" id="add">カートに追加</button><button class="btn secondary" onclick="nav('keypad')">手入力に戻る</button><button class="btn secondary" onclick="go('registerSale')">レジへ戻る</button></div>`; $('#add').onclick=()=>addItemToCart(item)}
 function addItemToCart(item){ if(item.status!=='selling') return alert('販売中の商品だけ追加できます'); if(state.cart.some(c=>c.item_id===item.id)) return alert('この商品はすでにカートにあります'); state.cart.push({id:uid(), item_id:item.id, item_code:item.item_code, item_name:itemName(item), price:item.price, quantity:1, subtotal:item.price, line_type:'item', image_uri:item.image_uri, added_at:nowIso()}); save(); lastNotice=`${item.item_code} ${itemName(item)} をカートに追加しました。`; go('registerSale') }
 

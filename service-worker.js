@@ -1,4 +1,4 @@
-const CACHE_NAME = 'sen-digit-register-phase2-10-single-frame-v1';
+const CACHE_NAME = 'sen-digit-register-phase2-12-single-frame-v2';
 const ASSETS = ['./','./index.html','./app.js','./manifest.json','./icon-192.png','./icon-512.png'];
 self.addEventListener('install', event => {
   event.waitUntil(caches.open(CACHE_NAME).then(cache => cache.addAll(ASSETS)));
@@ -10,5 +10,5 @@ self.addEventListener('activate', event => {
 });
 self.addEventListener('fetch', event => {
   if (event.request.method !== 'GET') return;
-  event.respondWith(caches.match(event.request).then(cached => cached || fetch(event.request)));
+  event.respondWith(fetch(event.request).then(res => { const copy=res.clone(); caches.open(CACHE_NAME).then(cache=>cache.put(event.request, copy)).catch(()=>{}); return res; }).catch(()=>caches.match(event.request))); 
 });
