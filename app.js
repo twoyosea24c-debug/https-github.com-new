@@ -17,6 +17,7 @@ let lineScanMode = 'single';
 let singleDigits = ['', '', ''];
 let singleAnalysis = [null, null, null];
 let singleIndex = 0;
+let normalDigitScan = null;
 
 function defaultState(){return {items:[], cart:[], sales:[], recognition_logs:[], settings:{shop_name:'', code_reuse_enabled:false, normal_digit_reading_enabled:true, preferred_payment_methods:['square','paypay','rakuten_pay','cash','other'], quick_price_buttons:[500,800,1000,1200,1500,2000], receipt_message:'ありがとうございました'}}}
 function load(){try{const loaded=JSON.parse(localStorage.getItem(KEY))||{}; return {...defaultState(), ...loaded, settings:{...defaultState().settings, ...(loaded.settings||{})}}}catch(e){return defaultState()}}
@@ -32,6 +33,7 @@ function formatDt(iso){ if(!iso) return '-'; const d=new Date(iso); return `${d.
 function itemName(item){return item.name || `商品 ${item.item_code}`}
 function statusLabel(s){return s==='selling'?'販売中':s==='sold'?'販売済み':'非表示'}
 function paymentLabel(s){return {square:'Square',paypay:'PayPay',rakuten_pay:'楽天ペイ',cash:'現金',other:'その他'}[s]||s}
+function escapeHtml(value){return String(value??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#039;'}[c]))}
 function nextItemCode(){
   const used = new Set(state.items.filter(i=>!state.settings.code_reuse_enabled || i.code_reuse_blocked !== false).map(i=>i.item_code));
   for(let n=1;n<=999;n++){const c=String(n).padStart(3,'0'); if(!used.has(c)) return c}
@@ -61,7 +63,7 @@ function warnCartHtml(){return state.cart.length?`<div class="notice"><b>未完�
 
 function render(){
   const v=$('#view'); footer(null);
-  const pages={home, register, registered, items, editItem, registerSale, lineReader, recognitionLogs, keypad, confirmItem, manualPrice, cart, receiptPreview, payment, saleDone, sales, settings};
+  const pages={home, register, registered, items, editItem, registerSale, lineReader, normalDigitReader, recognitionLogs, keypad, confirmItem, manualPrice, cart, receiptPreview, payment, saleDone, sales, settings};
   (pages[route.name]||home)(v, route.params||{});
 }
 
@@ -134,7 +136,7 @@ function registerSale(v){setTitle('レジ'); const recent=sellingItems().slice(-
   <button class="btn secondary" onclick="nav('cart')">カートを見る</button>
   <div class="card grid"><b>最近登録した販売中商品</b>${recent.length?recent.map(i=>`<button class="btn secondary small quick-item" onclick="nav('confirmItem',{id:'${i.id}'})">${i.item_code}　${itemName(i)}　${yen(i.price)}</button>`).join(''):'<div class="muted">販売中の商品がありません</div>'}</div>
   <button class="btn" onclick="nav('lineReader')">線数字を読む</button>
-  <button class="btn secondary" onclick="alert('通常数字OCRは次フェーズで実装します。線数字カメラ、3桁手入力、価格だけ追加を使ってください。')">通常数字を読む（準備中）</button>
+  <button class="btn secondary" onclick="nav('normalDigitReader')">普通数字を読む</button>
 </div>`; if(state.cart.length) footer(`<button class="btn ok" onclick="nav('receiptPreview')">支払いへ進む ${yen(cartTotal())}</button>`)}
 
 
@@ -214,6 +216,149 @@ function lineReader(v){
   $('#tripleModeBtn').onclick=()=>setScanMode('triple');
   updateScanOverlay();
   startLineCamera();
+}
+
+async function startNormalDigitCamera(){
+  stopCamera();
+  const video=$('#normalVideo');
+  if(!video) return;
+  try{
+    cameraStream = await navigator.mediaDevices.getUserMedia({video:{facingMode:{ideal:'environment'}}, audio:false});
+    video.srcObject = cameraStream;
+    await video.play();
+    $('#normalStatus').textContent='カメラ起動中。#001 / ID001 / No.001 のように商品番号を横長枠へ入れてください。';
+    await setTorch(true);
+  }catch(e){
+    $('#normalStatus').textContent='カメラを起動できませんでした。3桁番号を手入力してください。';
+    $('#normalFallback').classList.remove('hidden');
+  }
+}
+
+function normalDigitReader(v){
+  setTitle('普通数字読み取り');
+  stopCamera();
+  normalDigitScan=null;
+  if(state.settings.normal_digit_reading_enabled===false){
+    v.innerHTML=`<div class="grid"><div class="notice">普通数字読み取りは設定で無効です。3桁手入力を使ってください。</div><button class="btn" onclick="nav('keypad')">3桁手入力へ</button><button class="btn secondary" onclick="go('registerSale')">レジへ戻る</button></div>`;
+    return;
+  }
+  v.innerHTML=`<div class="grid">
+    <div class="notice"><b>普通数字モード</b><br>#001 / ID001 / ID:001 / No.001 / 商品番号001 のように、商品番号だけを横長枠へ入れてください。価格の数字は候補から下げます。</div>
+    <canvas id="normalCanvas" class="hidden"></canvas>
+    <div class="camera-wrap normal-camera">
+      <video id="normalVideo" class="camera" playsinline muted autoplay></video>
+      <div class="camera-shade"></div>
+      <div class="normal-overlay"><div class="normal-frame"><span>#001 / ID001 / No.001</span></div></div>
+    </div>
+    <div id="normalStatus" class="muted">カメラを起動しています...</div>
+    <div class="notice">撮影のコツ：15〜25cm程度離し、3桁の商品番号全体が横長枠に入るようにしてください。</div>
+    <div id="normalFallback" class="camera-fallback hidden"><button class="btn" onclick="nav('keypad')">3桁手入力へ</button><p class="muted">iPhoneではSafariのカメラ許可が必要です。カメラが使えない場合も手入力で販売できます。</p></div>
+    <button class="btn" id="normalCapture">撮影して読む</button>
+    <div class="two"><button class="btn secondary" id="normalTorch">ライトON</button><button class="btn secondary" id="normalRestart">カメラ再起動</button></div>
+    <div id="normalResult" class="hidden grid"></div>
+    <label>3桁番号</label>
+    <input id="normalCodeInput" inputmode="numeric" maxlength="3" placeholder="例：023">
+    <button class="btn" id="normalConfirm">この番号で商品確認</button>
+    <button class="btn secondary" onclick="stopCamera();nav('keypad')">手入力へ戻る</button>
+    <button class="btn secondary" onclick="stopCamera();go('registerSale')">レジへ戻る</button>
+  </div>`;
+  $('#normalCapture').onclick=captureNormalDigits;
+  $('#normalRestart').onclick=startNormalDigitCamera;
+  $('#normalTorch').onclick=()=>setTorch(!torchOn);
+  $('#normalCodeInput').oninput=e=>{e.target.value=normalizeDigitText(e.target.value).slice(0,3)};
+  $('#normalConfirm').onclick=confirmNormalDigits;
+  startNormalDigitCamera();
+}
+
+async function captureNormalDigits(){
+  const video=$('#normalVideo'); const canvas=$('#normalCanvas');
+  if(!video || !video.videoWidth){ return showNormalResult('カメラ映像がまだ準備できていません。3桁番号を手入力してください。'); }
+  const maxW=900; const scale=Math.min(1,maxW/video.videoWidth);
+  canvas.width=Math.round(video.videoWidth*scale); canvas.height=Math.round(video.videoHeight*scale);
+  const ctx=canvas.getContext('2d');
+  ctx.drawImage(video,0,0,canvas.width,canvas.height);
+  const box=getNormalDigitBox(canvas.width, canvas.height);
+  const crop=document.createElement('canvas');
+  crop.width=Math.round(box.w); crop.height=Math.round(box.h);
+  crop.getContext('2d').drawImage(canvas, box.x, box.y, box.w, box.h, 0, 0, crop.width, crop.height);
+  const preview=crop.toDataURL('image/jpeg',0.86);
+  let rawText='';
+  try{
+    rawText = await detectText(crop);
+  }catch(e){
+    rawText='';
+  }
+  const candidates=extractNormalCandidates(rawText);
+  normalDigitScan={mode:'normal_digit', captured_at:nowIso(), raw_text:rawText, candidates, preview};
+  if(candidates[0]){
+    $('#normalCodeInput').value=candidates[0].code;
+    if(navigator.vibrate) navigator.vibrate(40);
+    showNormalResult('読み取り候補を取得しました。番号を確認・修正してから商品確認へ進んでください。', preview, candidates, rawText);
+  }else{
+    $('#normalCodeInput').value='';
+    showNormalResult('読み取れませんでした。3桁番号を手入力してください。', preview, [], rawText);
+    saveNormalRecognitionLog('', false);
+  }
+}
+
+function getNormalDigitBox(w,h){return {x:w*0.12, y:h*0.38, w:w*0.76, h:h*0.22};}
+async function detectText(canvas){
+  if(!('TextDetector' in window)) return '';
+  const detector=new window.TextDetector();
+  const found=await detector.detect(canvas);
+  return found.map(x=>x.rawValue||'').filter(Boolean).join('\n');
+}
+function normalizeDigitText(value){return String(value||'').replace(/[０-９]/g,c=>String.fromCharCode(c.charCodeAt(0)-0xfee0)).replace(/\D/g,'');}
+function normalizeReadableText(value){return String(value||'').replace(/[０-９]/g,c=>String.fromCharCode(c.charCodeAt(0)-0xfee0)).replace(/￥/g,'¥').replace(/Ｎｏ/gi,'No').replace(/ＩＤ/gi,'ID');}
+function extractNormalCandidates(rawText){
+  const text=normalizeReadableText(rawText);
+  const map=new Map();
+  const add=(code,score,reason,index=0)=>{
+    if(!/^\d{3}$/.test(code) || code==='000') return;
+    const context=text.slice(Math.max(0,index-12), Math.min(text.length,index+18));
+    const priceLike=/[¥￥円]|価格|price|税込|税抜|,\d{3}/i.test(context);
+    const finalScore=Math.max(0, score-(priceLike?55:0));
+    if(priceLike && finalScore<40) return;
+    const cur=map.get(code);
+    if(!cur || cur.score<finalScore) map.set(code,{code, score:finalScore, confidence:Math.max(0.05,Math.min(0.98,finalScore/100)), reason:priceLike?`${reason} / 価格らしい文脈を減点`:reason, context:context.trim()});
+  };
+  const strong=/(?:#|ID\s*[:.\-]?|No\.?\s*[:\-]?|NO\.?\s*[:\-]?|商品番号\s*[:.\-]?|商品\s*No\.?\s*[:\-]?)\s*(\d{3})/gi;
+  for(const m of text.matchAll(strong)) add(m[1],95,'商品番号ラベルの近く',m.index||0);
+  const generic=/(^|[^\d,])(\d{3})(?![\d,])/g;
+  for(const m of text.matchAll(generic)) add(m[2],62,'3桁数字',(m.index||0)+m[1].length);
+  return Array.from(map.values()).sort((a,b)=>b.score-a.score).slice(0,5);
+}
+function showNormalResult(message, preview='', candidates=[], rawText=''){
+  const box=$('#normalResult'); if(!box) return;
+  box.classList.remove('hidden');
+  box.innerHTML=`<div class="card grid read-result-card">
+    <b>${message}</b>
+    ${preview?`<img class="snapshot normal-preview" src="${preview}">`:''}
+    ${candidates.length?`<div class="candidate-list">${candidates.map((c,i)=>`<button class="btn ${i===0?'':'secondary'} small" data-normal-candidate="${c.code}">${c.code}<br><small>${Math.round(c.confidence*100)}%</small></button>`).join('')}</div>`:'<div class="muted">候補なし。下の入力欄に3桁番号を入力できます。</div>'}
+    ${rawText?`<details><summary>OCRテキスト</summary><pre>${escapeHtml(rawText)}</pre></details>`:'<div class="muted">この環境ではブラウザOCRが使えない場合があります。その場合も撮影後に手入力できます。</div>'}
+  </div>`;
+  $$('[data-normal-candidate]').forEach(b=>b.onclick=()=>{$('#normalCodeInput').value=b.dataset.normalCandidate; if(normalDigitScan) normalDigitScan.selected_code=b.dataset.normalCandidate;});
+  box.scrollIntoView({behavior:'smooth', block:'start'});
+}
+function confirmNormalDigits(){
+  const digits=normalizeDigitText($('#normalCodeInput')?.value).slice(0,3);
+  if(!digits) return showNormalResult('読み取れませんでした。3桁番号を手入力してください。', normalDigitScan?.preview||'', normalDigitScan?.candidates||[], normalDigitScan?.raw_text||'');
+  const code=digits.padStart(3,'0').slice(-3);
+  $('#normalCodeInput').value=code;
+  const first=normalDigitScan?.selected_code || normalDigitScan?.candidates?.[0]?.code || '';
+  saveNormalRecognitionLog(code, Boolean(first && first!==code));
+  stopCamera();
+  nav('keypad',{prefill:code, fromScan:true});
+}
+function saveNormalRecognitionLog(selectedCode, correctedByUser){
+  try{
+    const scan=normalDigitScan || {captured_at:nowIso(), raw_text:'', candidates:[]};
+    const log={id:uid(), mode:'normal_digit', created_at:scan.captured_at||nowIso(), auto_code:scan.candidates?.[0]?.code||'', corrected_code:selectedCode||'', selected_code:selectedCode||'', result:selectedCode?'normal_digit_confirmed':'normal_digit_failed', raw_text:scan.raw_text||'', raw_candidates:scan.candidates||[], candidates:scan.candidates||[], corrected_by_user:correctedByUser, confidences:[Math.round((scan.candidates?.[0]?.confidence||0)*100)], alternatives:(scan.candidates||[]).map(c=>({digit:c.code, score:Math.round(c.score)}))};
+    state.recognition_logs=state.recognition_logs||[];
+    state.recognition_logs.unshift(log);
+    state.recognition_logs=state.recognition_logs.slice(0,200);
+    save();
+  }catch(e){}
 }
 
 function setScanMode(mode){

@@ -1,4 +1,4 @@
-const CACHE_NAME = 'sen-digit-register-phase2-12-single-frame-v2';
+const CACHE_NAME = 'sen-digit-register-normal-digit-v1';
 const ASSETS = ['./','./index.html','./app.js','./manifest.json','./icon-192.png','./icon-512.png'];
 self.addEventListener('install', event => {
   event.waitUntil(caches.open(CACHE_NAME).then(cache => cache.addAll(ASSETS)));
